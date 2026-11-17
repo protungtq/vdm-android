@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -68,7 +69,7 @@ fun CookiePlatformsScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFFDC2626),
+                    containerColor = VdmRed,
                     titleContentColor = Color.White,
                     navigationIconContentColor = Color.White,
                 ),
@@ -103,10 +104,13 @@ fun CookiePlatformsScreen(
                         )
                     }
                     if (states[platform] == true) {
-                        TextButton(onClick = {
-                            CookieStore.clearCookies(context, platform)
-                            refreshKey++
-                        }) {
+                        TextButton(
+                            onClick = {
+                                CookieStore.clearCookies(context, platform)
+                                refreshKey++
+                            },
+                            modifier = Modifier.heightIn(min = 48.dp),
+                        ) {
                             Text("Xóa")
                         }
                     }
@@ -143,7 +147,7 @@ fun CookieWebViewScreen(platform: CookiePlatform, onClose: () -> Unit) {
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFFDC2626),
+                    containerColor = VdmRed,
                     titleContentColor = Color.White,
                     navigationIconContentColor = Color.White,
                 ),
@@ -184,6 +188,7 @@ fun CookieWebViewScreen(platform: CookiePlatform, onClose: () -> Unit) {
                 },
                 modifier = Modifier
                     .fillMaxWidth()
+                    .heightIn(min = 48.dp)
                     .padding(horizontal = 16.dp, vertical = 4.dp),
             ) {
                 Text("Lưu cookie")

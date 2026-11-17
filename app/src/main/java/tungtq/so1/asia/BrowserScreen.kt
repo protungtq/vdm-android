@@ -213,7 +213,7 @@ fun BrowserScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFFDC2626),
+                    containerColor = VdmRed,
                     titleContentColor = Color.White,
                     navigationIconContentColor = Color.White,
                     actionIconContentColor = Color.White,
@@ -302,9 +302,12 @@ fun BrowserScreen(
                                 modifier = Modifier.weight(1f),
                             )
                             Spacer(Modifier.width(8.dp))
-                            OutlinedButton(onClick = {
-                                onMediaFound(captured.url, pageTitle, currentUrl)
-                            }) {
+                            OutlinedButton(
+                                onClick = {
+                                    onMediaFound(captured.url, pageTitle, currentUrl)
+                                },
+                                modifier = Modifier.heightIn(min = 48.dp),
+                            ) {
                                 Icon(Icons.Default.Download, contentDescription = null)
                                 Spacer(Modifier.width(4.dp))
                                 Text("Tải")
@@ -599,7 +602,7 @@ p{color:#666;font-size:14px;margin:0 0 20px}
 a{display:block;background:#fff;border:1px solid #e5e5e5;border-radius:12px;
   padding:16px 12px;text-align:center;text-decoration:none;color:#222;
   font-weight:700;font-size:15px}
-a span{display:block;font-weight:400;font-size:12px;color:#888;margin-top:4px}
+a span{display:block;font-weight:400;font-size:12px;color:#666;margin-top:4px}
 </style></head><body>
 <h1>VDM</h1>
 <p>Trình duyệt đã bật chặn quảng cáo. Mở trang video, link tải được sẽ tự hiện phía trên.</p>
