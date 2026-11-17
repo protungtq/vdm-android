@@ -75,6 +75,8 @@ private data class CapturedMedia(
     val url: String,
     val label: String,
     val sizeLabel: String? = null,
+    /** Tên file gốc khi link do DownloadListener bắt được (để tải giữ tên gốc). */
+    val fileName: String? = null,
 )
 
 /**
@@ -88,7 +90,12 @@ private data class CapturedMedia(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BrowserScreen(
-    onMediaFound: (directUrl: String, pageTitle: String?, pageUrl: String?) -> Unit,
+    onMediaFound: (
+        directUrl: String,
+        pageTitle: String?,
+        pageUrl: String?,
+        fileName: String?,
+    ) -> Unit,
     onScanPage: (pageUrl: String) -> Unit,
     onClose: () -> Unit,
 ) {
@@ -113,12 +120,12 @@ fun BrowserScreen(
         FilterStore.refreshIfNeeded(context)
     }
 
-    fun addCaptured(url: String, label: String) {
+    fun addCaptured(url: String, label: String, fileName: String? = null) {
         // Gộp link trùng: cùng máy chủ + cùng đường dẫn thì là cùng 1 file,
         // kể cả khi chữ ký trong query khác nhau.
         val key = browserCaptureKey(url)
         if (capturedLinks.any { browserCaptureKey(it.url) == key && it.label == label }) return
-        capturedLinks.add(CapturedMedia(url, label))
+        capturedLinks.add(CapturedMedia(url, label, fileName = fileName))
         // Đo dung lượng để hiện cạnh link, giúp chọn dễ hơn.
         scope.launch(Dispatchers.IO) {
             try {
@@ -304,7 +311,12 @@ fun BrowserScreen(
                             Spacer(Modifier.width(8.dp))
                             OutlinedButton(
                                 onClick = {
-                                    onMediaFound(captured.url, pageTitle, currentUrl)
+                                    onMediaFound(
+                                        captured.url,
+                                        pageTitle,
+                                        currentUrl,
+                                        captured.fileName,
+                                    )
                                 },
                                 modifier = Modifier.heightIn(min = 48.dp),
                             ) {
@@ -440,7 +452,7 @@ fun BrowserScreen(
                                     contentDisposition,
                                     mimeType,
                                 )
-                                addCaptured(url, fileName)
+                                addCaptured(url, fileName, fileName)
                                 Toast.makeText(
                                     context,
                                     "Đã thêm link tải: $fileName",

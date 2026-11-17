@@ -30,6 +30,8 @@ bản cũ rồi cài lại (file trong thư mục `Download/VDM/` không bị m�
 - File lưu trong thư mục `Download/VDM/`, đặt tên theo dạng
   `VDM_ngày_tháng_năm_số-thứ-tự` (ví dụ `VDM_16_11_2026_001.mp4`), đếm lại
   từ 001 mỗi ngày.
+- Tải file trực tiếp (link `.png`, `.mp4`, `.zip`, `.pdf`, `.apk`…): nhận diện
+  tự động, tải thẳng giữ nguyên tên file gốc, trùng tên thì thêm số thứ tự.
 - Trình duyệt tích hợp: chặn quảng cáo 4 bộ lọc, tự bắt link video/âm thanh
   trên trang đang mở, bắt được link Douyin không logo.
 - Cập nhật bộ quét yt-dlp trong app (không cần chờ bản app mới).

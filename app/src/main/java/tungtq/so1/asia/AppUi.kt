@@ -220,7 +220,9 @@ fun VdmApp(viewModel: MainViewModel) {
         }
         if (uiState.showBrowser) {
             BrowserScreen(
-                onMediaFound = viewModel::onBrowserMediaFound,
+                onMediaFound = { url, title, pageUrl, fileName ->
+                    viewModel.onBrowserMediaFound(url, title, pageUrl, fileName)
+                },
                 onScanPage = viewModel::scanPage,
                 onClose = viewModel::closeBrowser,
             )
@@ -269,7 +271,7 @@ fun VdmApp(viewModel: MainViewModel) {
                         OutlinedTextField(
                             value = uiState.urlText,
                             onValueChange = viewModel::setUrl,
-                            label = { Text("Dán link video (YouTube, Facebook, TikTok…)") },
+                            label = { Text("Dán link video hoặc file (YouTube, Facebook, TikTok…)") },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
                             trailingIcon = {

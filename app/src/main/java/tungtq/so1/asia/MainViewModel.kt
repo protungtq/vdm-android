@@ -123,7 +123,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun scan() {
         val url = _uiState.value.urlText.trim()
         if (url.isBlank()) {
-            _uiState.update { it.copy(message = "Dán link video vào trước đã nhé.") }
+            _uiState.update { it.copy(message = "Dán link vào trước đã nhé.") }
             return
         }
         val directUrl = Downloader.extractUrl(url) ?: url
@@ -162,6 +162,34 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                 douyinWebViewUrl = resolved,
                             )
                         }
+                    }
+                    return@launch
+                }
+                // Link file trực tiếp (.png/.zip/.mp4...): tải thẳng giữ tên
+                // gốc, khỏi qua bộ quét video (quét sẽ lỗi vì không phải
+                // trang video).
+                val directFile = Downloader.detectDirectFile(resolved)
+                if (directFile != null) {
+                    val fileOption = VideoFormatOption(
+                        formatSpec = Downloader.DIRECT_SPEC,
+                        label = "File (tải trực tiếp)",
+                        sizeLabel = directFile.sizeLabel,
+                        directUrl = resolved,
+                        fileName = directFile.fileName,
+                    )
+                    _uiState.update {
+                        it.copy(
+                            scanning = false,
+                            scanned = ScannedVideo(
+                                title = directFile.fileName,
+                                uploader = null,
+                                durationSeconds = null,
+                                thumbnailUrl = resolved.takeIf { directFile.isImage },
+                                webpageUrl = resolved,
+                                options = listOf(fileOption),
+                            ),
+                            selectedSpec = Downloader.DIRECT_SPEC,
+                        )
                     }
                     return@launch
                 }
@@ -400,7 +428,41 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /** Trình duyệt bắt được link file trực tiếp: dựng kết quả quét để tải như thường. */
-    fun onBrowserMediaFound(directUrl: String, pageTitle: String?, pageUrl: String?) {
+    fun onBrowserMediaFound(
+        directUrl: String,
+        pageTitle: String?,
+        pageUrl: String?,
+        fileName: String? = null,
+    ) {
+        // Link tải file do trình duyệt bắt được (có tên file gốc): tải thẳng
+        // giữ tên gốc, không ép thành video .mp4.
+        if (!fileName.isNullOrBlank()) {
+            val fileOption = VideoFormatOption(
+                formatSpec = Downloader.DIRECT_SPEC,
+                label = "File (tải trực tiếp)",
+                sizeLabel = null,
+                directUrl = directUrl,
+                referer = pageUrl,
+                fileName = fileName,
+            )
+            _uiState.update {
+                it.copy(
+                    showBrowser = false,
+                    message = null,
+                    urlText = pageUrl ?: it.urlText,
+                    scanned = ScannedVideo(
+                        title = fileName,
+                        uploader = null,
+                        durationSeconds = null,
+                        thumbnailUrl = directUrl.takeIf { Downloader.isImageFileName(fileName) },
+                        webpageUrl = pageUrl,
+                        options = listOf(fileOption),
+                    ),
+                    selectedSpec = Downloader.DIRECT_SPEC,
+                )
+            }
+            return
+        }
         val option = VideoFormatOption(
             formatSpec = Downloader.DIRECT_SPEC,
             label = "File (tải trực tiếp)",
