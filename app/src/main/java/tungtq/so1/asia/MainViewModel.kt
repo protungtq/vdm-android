@@ -284,6 +284,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _uiState.update { it.copy(message = "Link này không có bản xem trước.") }
             return
         }
+        // Video tách tiếng (vd bản HD của Facebook): link xem trước chỉ có
+        // hình, tiếng nằm ở link riêng mà app khác không gộp được như màn
+        // hình xem trước trong app, nên mở bằng VLC sẽ không có tiếng.
+        // Hướng người dùng tải về rồi mở file đã tải (file tải về đã gộp
+        // sẵn tiếng). Video có sẵn tiếng thì mở app khác như thường.
+        val scanned = _uiState.value.scanned
+        if (preview.mayLackAudio && !preview.isAudioOnly && scanned?.previewAudio != null) {
+            _uiState.update {
+                it.copy(
+                    message = "Video này tách riêng tiếng nên mở bằng app khác sẽ không có " +
+                        "tiếng. Hãy bấm Tải xuống rồi mở file đã tải trong mục File đã tải.",
+                )
+            }
+            return
+        }
         val intent = Intent(Intent.ACTION_VIEW).apply {
             if (preview.mimeType != null) {
                 setDataAndType(Uri.parse(preview.url), preview.mimeType)
