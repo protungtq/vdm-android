@@ -1,0 +1,17 @@
+VDM Mobile is a free and open source video downloader for Android.
+
+Share a video link from any app and VDM fetches it for you: pick a quality and the download runs in the background, even with the screen off. It is powered by yt-dlp, so it works with more than 1000 sites, including YouTube, Facebook, TikTok, Instagram, X and Douyin.
+
+The built-in browser blocks ads with four filter lists and automatically catches video and audio links on the page you are viewing, including watermark-free Douyin links.
+
+Downloads are saved to the Download/VDM folder with short names based on the date and a daily counter, so they are easy to find again.
+
+Features:
+* Download videos or audio-only from 1000+ sites via yt-dlp
+* Share-to-download from any app, no link pasting needed
+* Background downloads with a persistent notification
+* Ad-blocking browser with automatic link detection
+* Built-in preview player that merges separate video and audio streams
+* No ads, no accounts, no tracking
+
+This app downloads from video platforms such as YouTube, which are non-free network services. Please only download content you have the right to save.

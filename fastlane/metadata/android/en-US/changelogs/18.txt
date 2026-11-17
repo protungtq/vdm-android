@@ -1,0 +1,1 @@
+Downloaded files are now named VDM_DD_MM_YYYY_NNN, with the counter restarting at 001 every day. Applies to both share-to-download and in-browser downloads.

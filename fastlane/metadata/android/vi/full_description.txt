@@ -1,0 +1,17 @@
+VDM Mobile là trình tải video miễn phí, mã nguồn mở cho Android.
+
+Bấm Chia sẻ link video từ bất kỳ app nào và VDM sẽ tải về giúp bạn: chọn chất lượng rồi tải chạy nền, kể cả khi tắt màn hình. App dùng yt-dlp nên tải được từ hơn 1000 trang, gồm YouTube, Facebook, TikTok, Instagram, X và Douyin.
+
+Trình duyệt tích hợp chặn quảng cáo bằng 4 bộ lọc và tự bắt link video, âm thanh trên trang đang mở, kể cả link Douyin không logo.
+
+File tải về nằm trong thư mục Download/VDM, đặt tên gọn theo ngày và số thứ tự trong ngày, dễ tìm lại.
+
+Tính năng:
+* Tải video hoặc chỉ lấy tiếng từ hơn 1000 trang qua yt-dlp
+* Chia sẻ là tải, không cần dán link
+* Tải chạy nền, có thông báo tiến trình
+* Trình duyệt chặn quảng cáo, tự bắt link
+* Xem trước video gộp tiếng ngay trong app
+* Không quảng cáo, không tài khoản, không theo dõi
+
+App tải video từ các nền tảng như YouTube, là dịch vụ mạng không tự do. Chỉ tải nội dung bạn có quyền lưu giữ.

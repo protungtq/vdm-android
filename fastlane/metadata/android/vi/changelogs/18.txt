@@ -1,0 +1,1 @@
+File tải về nay đặt tên VDM_DD_MM_YYYY_NNN, đếm lại từ 001 mỗi ngày. Áp dụng cho cả tải qua Chia sẻ lẫn tải trong trình duyệt.
