@@ -491,6 +491,11 @@ fun VdmApp(viewModel: MainViewModel) {
                             }
                         }
                         Spacer(Modifier.height(8.dp))
+                        Text(
+                            "Bộ quét đang dùng: ${uiState.engineVersion ?: "chưa xác định được"}.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        Spacer(Modifier.height(8.dp))
                         OutlinedButton(
                             onClick = { viewModel.openCookiePlatforms() },
                             modifier = Modifier.fillMaxWidth(),

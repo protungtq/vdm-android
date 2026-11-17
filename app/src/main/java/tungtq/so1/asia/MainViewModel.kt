@@ -34,6 +34,8 @@ data class VdmUiState(
     val updatingEngine: Boolean = false,
     val engineReady: Boolean = false,
     val engineError: String? = null,
+    /** Phiên bản bộ quét (yt-dlp) đang dùng, để biết đã có bản vá CVE hay chưa. */
+    val engineVersion: String? = null,
     val preview: PreviewMedia? = null,
     val showImageViewer: Boolean = false,
     val showDownloadedFiles: Boolean = false,
@@ -68,6 +70,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             app.engineError.collect { error ->
                 _uiState.update { it.copy(engineError = error) }
             }
+        }
+        // Đọc phiên bản bộ quét đang dùng để hiện lên màn hình chính.
+        viewModelScope.launch(Dispatchers.IO) {
+            val version = try {
+                YoutubeDL.getInstance().version(getApplication())
+            } catch (_: Exception) {
+                null
+            }
+            _uiState.update { it.copy(engineVersion = version) }
         }
         // Lần chạy trước app có tự đóng vì lỗi thì đọc báo cáo để hiện lên.
         viewModelScope.launch(Dispatchers.IO) {
@@ -214,9 +225,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 }
                 val alreadyLatest = status == YoutubeDL.UpdateStatus.ALREADY_UP_TO_DATE
+                val version = try {
+                    YoutubeDL.getInstance().version(getApplication())
+                } catch (_: Exception) {
+                    null
+                }
                 _uiState.update {
                     it.copy(
                         updatingEngine = false,
+                        engineVersion = version,
                         message = if (alreadyLatest) {
                             "Bộ quét đã là bản mới nhất rồi."
                         } else {

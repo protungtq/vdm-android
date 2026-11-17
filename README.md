@@ -26,7 +26,7 @@ bản cũ rồi cài lại (file trong thư mục `Download/VDM/` không bị m�
   chất lượng (1080p, 720p…), kèm lựa chọn chỉ lấy âm thanh.
 - Tải ở chế độ foreground service nên vẫn chạy khi tắt màn hình hay chuyển
   app, có thông báo tiến trình.
-- Tải đa kết nối bằng aria2c, gộp video + âm thanh bằng FFmpeg.
+- Tải song song nhiều mảnh bằng trình tải có sẵn của yt-dlp, gộp video + âm thanh bằng FFmpeg.
 - File lưu trong thư mục `Download/VDM/`, đặt tên theo dạng
   `VDM_ngày_tháng_năm_số-thứ-tự` (ví dụ `VDM_16_11_2026_001.mp4`), đếm lại
   từ 001 mỗi ngày.
@@ -40,7 +40,7 @@ bản cũ rồi cài lại (file trong thư mục `Download/VDM/` không bị m�
 ## Bộ máy
 
 - [youtubedl-android](https://github.com/yausername/youtubedl-android) 0.18.1
-  (nhúng Python + yt-dlp, FFmpeg, aria2c).
+  (nhúng Python + yt-dlp và FFmpeg).
 - Kotlin + Jetpack Compose (Material 3), minSdk 26 (Android 8.0+).
 
 ## Build
@@ -71,4 +71,3 @@ youtubedl-android (GPL-3.0).
 
 - yt-dlp và youtubedl-android (yausername) — bộ máy quét và tải video.
 - FFmpeg — gộp video/âm thanh và tách MP3.
-- aria2c — tải đa kết nối.

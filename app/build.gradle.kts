@@ -16,7 +16,7 @@ android {
         versionName = "0.2.15"
 
         ndk {
-            // youtubedl-android nhúng Python/FFmpeg/aria2c cho cả 4 kiến trúc
+            // youtubedl-android nhúng Python/FFmpeg cho cả 4 kiến trúc
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
         }
     }
@@ -57,7 +57,6 @@ dependencies {
     val youtubedlAndroid = "0.18.1"
     implementation("io.github.junkfood02.youtubedl-android:library:$youtubedlAndroid")
     implementation("io.github.junkfood02.youtubedl-android:ffmpeg:$youtubedlAndroid")
-    implementation("io.github.junkfood02.youtubedl-android:aria2c:$youtubedlAndroid")
 
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.activity:activity-compose:1.9.3")

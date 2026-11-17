@@ -141,7 +141,7 @@ object Downloader {
     /**
      * Cấp tên gốc (chưa có đuôi) cho 1 lượt tải, đảm bảo chưa từng dùng trong
      * thư mục. Chỉ gọi 1 lần cho mỗi lượt tải ở download(): các lần thử lại
-     * (aria2, không cookie) dùng chung tên này để khỏi sinh file rời rạc.
+     * (không cookie) dùng chung tên này để khỏi sinh file rời rạc.
      */
     @Synchronized
     private fun allocateBaseName(dir: File): String {
@@ -184,32 +184,36 @@ object Downloader {
     suspend fun fetchInfo(url: String): ScannedVideo = withContext(Dispatchers.IO) {
         val resolvedUrl = resolveRedirects(url)
         val cookieFile = appContext?.let { CookieStore.cookieFileIfAny(it) }
-        try {
-            fetchViaYtDlp(resolvedUrl, cookieFile)
-        } catch (ytError: Exception) {
-            Log.w(TAG, "yt-dlp scan failed, trying fallback", ytError)
-            // Lỗi #15161: request gửi kèm cookie làm Facebook trả về dạng trang
-            // mà bộ quét không đọc được. Thử lại 1 lần không gửi cookie:
-            // video công khai thường đọc được bình thường.
-            if (isFacebookParseError(ytError) && cookieFile != null) {
-                try {
-                    return@withContext fetchViaYtDlp(resolvedUrl, null)
-                } catch (retryError: Exception) {
-                    Log.w(TAG, "facebook no-cookie retry failed", retryError)
-                    throw facebookGuidance(retryError)
-                }
-            }
-            if (isFacebookParseError(ytError)) throw facebookGuidance(ytError)
-            if (!isTikTokUrl(resolvedUrl)) throw ytError
+        // Quét không gửi cookie trước: video công khai đọc được ngay mà
+        // không lộ cookie đăng nhập, và tránh luôn lỗi #15161 của
+        // Facebook (request kèm cookie làm Facebook trả dạng trang mà
+        // bộ quét không đọc được). Chỉ thử kèm cookie đã lưu khi quét
+        // trần thất bại, tức video có thể cần đăng nhập.
+        val firstError = try {
+            return@withContext fetchViaYtDlp(resolvedUrl, null)
+        } catch (e: Exception) {
+            e
+        }
+        var ytError = firstError
+        if (cookieFile != null) {
             try {
-                fetchViaTikwm(resolvedUrl)
-            } catch (fbError: Exception) {
-                Log.e(TAG, "tikwm fallback failed", fbError)
-                throw Exception(
-                    "Không quét được link này. Bộ quét chính báo: " +
-                        "${ytError.message}; nguồn dự phòng báo: ${fbError.message}",
-                )
+                return@withContext fetchViaYtDlp(resolvedUrl, cookieFile)
+            } catch (e: Exception) {
+                Log.w(TAG, "yt-dlp scan with cookies failed", e)
+                ytError = e
             }
+        }
+        Log.w(TAG, "yt-dlp scan failed, trying fallback", ytError)
+        if (isFacebookParseError(ytError)) throw facebookGuidance(ytError)
+        if (!isTikTokUrl(resolvedUrl)) throw ytError
+        try {
+            fetchViaTikwm(resolvedUrl)
+        } catch (fbError: Exception) {
+            Log.e(TAG, "tikwm fallback failed", fbError)
+            throw Exception(
+                "Không quét được link này. Bộ quét chính báo: " +
+                    "${ytError.message}; nguồn dự phòng báo: ${fbError.message}",
+            )
         }
     }
 
@@ -614,7 +618,13 @@ object Downloader {
         }
     }
 
-    /** Tải qua yt-dlp: thử aria2 trước, lỗi do aria2 thì thử lại bằng trình tải thường. */
+    /**
+     * Tải qua yt-dlp bằng trình tải có sẵn của nó, tải song song 4 mảnh
+     * (-N). KHÔNG dùng aria2c nữa: yt-dlp trước 2026.06.09 mà dùng aria2c
+     * cho HLS/DASH thì dính CVE-2026-50574 (ghi file tùy ý qua manifest),
+     * và bản vá của upstream cũng bỏ hẳn aria2c cho HLS/DASH, khuyên
+     * chuyển sang -N.
+     */
     private fun downloadViaYtDlp(
         url: String,
         option: VideoFormatOption,
@@ -623,50 +633,31 @@ object Downloader {
         cookieFile: File?,
         onProgress: (Float, Long) -> Unit,
     ): YoutubeDLResponse {
-        val request = buildYtDlpRequest(url, option, dir, baseName, cookieFile, useAria2 = true)
-        try {
-            return executeRequest(request, onProgress)
-        } catch (ariaError: Exception) {
-            // Chỉ thử lại khi lỗi đến từ trình tải phụ aria2 (vd exit code 16:
-            // không tạo được file). Lỗi do link/video thì thử lại cũng vậy.
-            val message = ariaError.message ?: ""
-            if (cancelRequested || !message.contains("aria2c", ignoreCase = true)) {
-                throw ariaError
-            }
-            Log.w(TAG, "aria2 download failed, retrying with built-in downloader", ariaError)
-            val fallback = buildYtDlpRequest(url, option, dir, baseName, cookieFile, useAria2 = false)
-            try {
-                return executeRequest(fallback, onProgress)
-            } catch (fallbackError: Exception) {
-                throw Exception(
-                    "Tải bằng trình tải phụ thất bại (${ariaError.message}); " +
-                        "thử lại bằng cách tải thường cũng thất bại " +
-                        "(${fallbackError.message})",
-                )
-            }
-        }
+        val request = buildYtDlpRequest(url, option, dir, baseName, cookieFile)
+        return executeRequest(request, onProgress)
     }
 
-    /** Dựng request yt-dlp. [useAria2] = false thì dùng trình tải có sẵn của yt-dlp. */
+    /** Dựng request yt-dlp, dùng trình tải có sẵn với 4 mảnh song song. */
     private fun buildYtDlpRequest(
         url: String,
         option: VideoFormatOption,
         dir: File,
         baseName: String,
         cookieFile: File?,
-        useAria2: Boolean,
     ): YoutubeDLRequest {
         return YoutubeDLRequest(url).apply {
             addOption("--no-playlist")
             addOption("--no-mtime")
             addOption("--no-warnings")
+            // Tải song song 4 mảnh bằng trình tải có sẵn (thay cho aria2c).
+            addOption("-N", "4")
             withCookieFile(cookieFile)
             // Tên file cố định dạng VDM_ngày_tháng_năm_số-thứ-tự, chỉ để yt-dlp
             // tự điền đuôi theo định dạng thật (.mp4/.webm/.mp3...). Không lấy
             // tiêu đề nữa: tiêu đề mạng xã hội hay kèm lượt xem/tương tác
             // ("229K views · 6.5K reactions | ...") thành tên rác, lại dài quá
-            // 255 byte (tiếng Việt có dấu, mỗi chữ tới 3 byte) làm aria2 không
-            // tạo được file (exit code 16).
+            // 255 byte (tiếng Việt có dấu, mỗi chữ tới 3 byte) làm hệ thống
+            // file không tạo được file.
             addOption("-o", dir.absolutePath + "/$baseName.%(ext)s")
             if (option.isAudioOnly) {
                 addOption("--extract-audio")
@@ -674,16 +665,6 @@ object Downloader {
                 addOption("-f", "bestaudio/best")
             } else {
                 addOption("-f", option.formatSpec)
-            }
-            if (useAria2) {
-                // aria2c tải đa kết nối cho nhanh, giống bản desktop.
-                // file-allocation=none: tránh lỗi tạo file trên bộ nhớ ngoài
-                // của Android; allow-overwrite: tải lại cùng tên không bị từ chối.
-                addOption("--downloader", "libaria2c.so")
-                addOption(
-                    "--downloader-args",
-                    "aria2c:--file-allocation=none --allow-overwrite=true",
-                )
             }
         }
     }
