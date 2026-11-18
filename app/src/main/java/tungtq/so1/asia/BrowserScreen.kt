@@ -75,6 +75,8 @@ private data class CapturedMedia(
     val url: String,
     val label: String,
     val sizeLabel: String? = null,
+    /** Tên file gốc khi link do DownloadListener bắt được (để tải giữ tên gốc). */
+    val fileName: String? = null,
 )
 
 /**
@@ -88,7 +90,12 @@ private data class CapturedMedia(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BrowserScreen(
-    onMediaFound: (directUrl: String, pageTitle: String?, pageUrl: String?) -> Unit,
+    onMediaFound: (
+        directUrl: String,
+        pageTitle: String?,
+        pageUrl: String?,
+        fileName: String?,
+    ) -> Unit,
     onScanPage: (pageUrl: String) -> Unit,
     onClose: () -> Unit,
 ) {
@@ -113,12 +120,12 @@ fun BrowserScreen(
         FilterStore.refreshIfNeeded(context)
     }
 
-    fun addCaptured(url: String, label: String) {
+    fun addCaptured(url: String, label: String, fileName: String? = null) {
         // Gộp link trùng: cùng máy chủ + cùng đường dẫn thì là cùng 1 file,
         // kể cả khi chữ ký trong query khác nhau.
         val key = browserCaptureKey(url)
         if (capturedLinks.any { browserCaptureKey(it.url) == key && it.label == label }) return
-        capturedLinks.add(CapturedMedia(url, label))
+        capturedLinks.add(CapturedMedia(url, label, fileName = fileName))
         // Đo dung lượng để hiện cạnh link, giúp chọn dễ hơn.
         scope.launch(Dispatchers.IO) {
             try {
@@ -213,7 +220,7 @@ fun BrowserScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFFDC2626),
+                    containerColor = VdmRed,
                     titleContentColor = Color.White,
                     navigationIconContentColor = Color.White,
                     actionIconContentColor = Color.White,
@@ -302,9 +309,17 @@ fun BrowserScreen(
                                 modifier = Modifier.weight(1f),
                             )
                             Spacer(Modifier.width(8.dp))
-                            OutlinedButton(onClick = {
-                                onMediaFound(captured.url, pageTitle, currentUrl)
-                            }) {
+                            OutlinedButton(
+                                onClick = {
+                                    onMediaFound(
+                                        captured.url,
+                                        pageTitle,
+                                        currentUrl,
+                                        captured.fileName,
+                                    )
+                                },
+                                modifier = Modifier.heightIn(min = 48.dp),
+                            ) {
                                 Icon(Icons.Default.Download, contentDescription = null)
                                 Spacer(Modifier.width(4.dp))
                                 Text("Tải")
@@ -437,7 +452,7 @@ fun BrowserScreen(
                                     contentDisposition,
                                     mimeType,
                                 )
-                                addCaptured(url, fileName)
+                                addCaptured(url, fileName, fileName)
                                 Toast.makeText(
                                     context,
                                     "Đã thêm link tải: $fileName",
@@ -599,7 +614,7 @@ p{color:#666;font-size:14px;margin:0 0 20px}
 a{display:block;background:#fff;border:1px solid #e5e5e5;border-radius:12px;
   padding:16px 12px;text-align:center;text-decoration:none;color:#222;
   font-weight:700;font-size:15px}
-a span{display:block;font-weight:400;font-size:12px;color:#888;margin-top:4px}
+a span{display:block;font-weight:400;font-size:12px;color:#666;margin-top:4px}
 </style></head><body>
 <h1>VDM</h1>
 <p>Trình duyệt đã bật chặn quảng cáo. Mở trang video, link tải được sẽ tự hiện phía trên.</p>

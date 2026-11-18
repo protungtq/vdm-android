@@ -2,7 +2,6 @@ package tungtq.so1.asia
 
 import android.app.Application
 import android.util.Log
-import com.yausername.aria2c.Aria2c
 import com.yausername.ffmpeg.FFmpeg
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLException
@@ -36,13 +35,13 @@ class VdmApplication : Application() {
         // trình duyệt trong app chặn được ngay từ lần mở đầu tiên.
         FilterStore.loadCached(this)
         FilterStore.refreshIfNeeded(this)
-        // Khởi tạo bộ máy yt-dlp + FFmpeg + aria2c (lần đầu chạy sẽ giải nén
+        // Khởi tạo bộ máy yt-dlp + FFmpeg (lần đầu chạy sẽ giải nén
         // Python/yt-dlp/FFmpeg từ native libs nên cần chạy nền, tránh chặn UI).
+        // Không dùng aria2c nữa (CVE-2026-50574).
         appScope.launch {
             try {
                 YoutubeDL.getInstance().init(this@VdmApplication)
                 FFmpeg.getInstance().init(this@VdmApplication)
-                Aria2c.getInstance().init(this@VdmApplication)
                 _engineReady.value = true
                 Log.i(TAG, "yt-dlp engine ready")
             } catch (e: YoutubeDLException) {

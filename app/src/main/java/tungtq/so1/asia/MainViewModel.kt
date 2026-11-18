@@ -34,6 +34,8 @@ data class VdmUiState(
     val updatingEngine: Boolean = false,
     val engineReady: Boolean = false,
     val engineError: String? = null,
+    /** Phiên bản bộ quét (yt-dlp) đang dùng, để biết đã có bản vá CVE hay chưa. */
+    val engineVersion: String? = null,
     val preview: PreviewMedia? = null,
     val showImageViewer: Boolean = false,
     val showDownloadedFiles: Boolean = false,
@@ -68,6 +70,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             app.engineError.collect { error ->
                 _uiState.update { it.copy(engineError = error) }
             }
+        }
+        // Đọc phiên bản bộ quét đang dùng để hiện lên màn hình chính.
+        viewModelScope.launch(Dispatchers.IO) {
+            val version = try {
+                YoutubeDL.getInstance().version(getApplication())
+            } catch (_: Exception) {
+                null
+            }
+            _uiState.update { it.copy(engineVersion = version) }
         }
         // Lần chạy trước app có tự đóng vì lỗi thì đọc báo cáo để hiện lên.
         viewModelScope.launch(Dispatchers.IO) {
@@ -112,7 +123,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun scan() {
         val url = _uiState.value.urlText.trim()
         if (url.isBlank()) {
-            _uiState.update { it.copy(message = "Dán link video vào trước đã nhé.") }
+            _uiState.update { it.copy(message = "Dán link vào trước đã nhé.") }
             return
         }
         val directUrl = Downloader.extractUrl(url) ?: url
@@ -151,6 +162,34 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                 douyinWebViewUrl = resolved,
                             )
                         }
+                    }
+                    return@launch
+                }
+                // Link file trực tiếp (.png/.zip/.mp4...): tải thẳng giữ tên
+                // gốc, khỏi qua bộ quét video (quét sẽ lỗi vì không phải
+                // trang video).
+                val directFile = Downloader.detectDirectFile(resolved)
+                if (directFile != null) {
+                    val fileOption = VideoFormatOption(
+                        formatSpec = Downloader.DIRECT_SPEC,
+                        label = "File (tải trực tiếp)",
+                        sizeLabel = directFile.sizeLabel,
+                        directUrl = resolved,
+                        fileName = directFile.fileName,
+                    )
+                    _uiState.update {
+                        it.copy(
+                            scanning = false,
+                            scanned = ScannedVideo(
+                                title = directFile.fileName,
+                                uploader = null,
+                                durationSeconds = null,
+                                thumbnailUrl = resolved.takeIf { directFile.isImage },
+                                webpageUrl = resolved,
+                                options = listOf(fileOption),
+                            ),
+                            selectedSpec = Downloader.DIRECT_SPEC,
+                        )
                     }
                     return@launch
                 }
@@ -214,9 +253,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 }
                 val alreadyLatest = status == YoutubeDL.UpdateStatus.ALREADY_UP_TO_DATE
+                val version = try {
+                    YoutubeDL.getInstance().version(getApplication())
+                } catch (_: Exception) {
+                    null
+                }
                 _uiState.update {
                     it.copy(
                         updatingEngine = false,
+                        engineVersion = version,
                         message = if (alreadyLatest) {
                             "Bộ quét đã là bản mới nhất rồi."
                         } else {
@@ -265,6 +310,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val preview = _uiState.value.preview ?: currentPreview()
         if (preview == null) {
             _uiState.update { it.copy(message = "Link này không có bản xem trước.") }
+            return
+        }
+        // Video tách tiếng (vd bản HD của Facebook): link xem trước chỉ có
+        // hình, tiếng nằm ở link riêng mà app khác không gộp được như màn
+        // hình xem trước trong app, nên mở bằng VLC sẽ không có tiếng.
+        // Hướng người dùng tải về rồi mở file đã tải (file tải về đã gộp
+        // sẵn tiếng). Video có sẵn tiếng thì mở app khác như thường.
+        val scanned = _uiState.value.scanned
+        if (preview.mayLackAudio && !preview.isAudioOnly && scanned?.previewAudio != null) {
+            _uiState.update {
+                it.copy(
+                    message = "Video này tách riêng tiếng nên mở bằng app khác sẽ không có " +
+                        "tiếng. Hãy bấm Tải xuống rồi mở file đã tải trong mục File đã tải.",
+                )
+            }
             return
         }
         val intent = Intent(Intent.ACTION_VIEW).apply {
@@ -368,7 +428,41 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /** Trình duyệt bắt được link file trực tiếp: dựng kết quả quét để tải như thường. */
-    fun onBrowserMediaFound(directUrl: String, pageTitle: String?, pageUrl: String?) {
+    fun onBrowserMediaFound(
+        directUrl: String,
+        pageTitle: String?,
+        pageUrl: String?,
+        fileName: String? = null,
+    ) {
+        // Link tải file do trình duyệt bắt được (có tên file gốc): tải thẳng
+        // giữ tên gốc, không ép thành video .mp4.
+        if (!fileName.isNullOrBlank()) {
+            val fileOption = VideoFormatOption(
+                formatSpec = Downloader.DIRECT_SPEC,
+                label = "File (tải trực tiếp)",
+                sizeLabel = null,
+                directUrl = directUrl,
+                referer = pageUrl,
+                fileName = fileName,
+            )
+            _uiState.update {
+                it.copy(
+                    showBrowser = false,
+                    message = null,
+                    urlText = pageUrl ?: it.urlText,
+                    scanned = ScannedVideo(
+                        title = fileName,
+                        uploader = null,
+                        durationSeconds = null,
+                        thumbnailUrl = directUrl.takeIf { Downloader.isImageFileName(fileName) },
+                        webpageUrl = pageUrl,
+                        options = listOf(fileOption),
+                    ),
+                    selectedSpec = Downloader.DIRECT_SPEC,
+                )
+            }
+            return
+        }
         val option = VideoFormatOption(
             formatSpec = Downloader.DIRECT_SPEC,
             label = "File (tải trực tiếp)",

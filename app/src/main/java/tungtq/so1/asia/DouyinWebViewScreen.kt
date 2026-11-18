@@ -231,7 +231,7 @@ fun DouyinWebViewScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFFDC2626),
+                    containerColor = VdmRed,
                     titleContentColor = Color.White,
                     navigationIconContentColor = Color.White,
                 ),
@@ -280,13 +280,16 @@ fun DouyinWebViewScreen(
                                 modifier = Modifier.weight(1f),
                             )
                             Spacer(Modifier.width(8.dp))
-                            OutlinedButton(onClick = {
-                                onVideoFound(
-                                    captured.url,
-                                    webView?.title,
-                                    captured.label == LABEL_NO_WATERMARK,
-                                )
-                            }) {
+                            OutlinedButton(
+                                onClick = {
+                                    onVideoFound(
+                                        captured.url,
+                                        webView?.title,
+                                        captured.label == LABEL_NO_WATERMARK,
+                                    )
+                                },
+                                modifier = Modifier.heightIn(min = 48.dp),
+                            ) {
                                 Icon(Icons.Default.Download, contentDescription = null)
                                 Spacer(Modifier.width(4.dp))
                                 Text("Tải")
@@ -318,6 +321,7 @@ fun DouyinWebViewScreen(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
+                        .heightIn(min = 48.dp)
                         .padding(horizontal = 16.dp, vertical = 4.dp),
                 ) {
                     Text("Lấy link từ trình phát")
@@ -328,6 +332,7 @@ fun DouyinWebViewScreen(
                 enabled = !lookingUp,
                 modifier = Modifier
                     .fillMaxWidth()
+                    .heightIn(min = 48.dp)
                     .padding(horizontal = 16.dp, vertical = 4.dp),
             ) {
                 Text(if (lookingUp) "Đang tìm bản không logo…" else "Tìm bản không logo")

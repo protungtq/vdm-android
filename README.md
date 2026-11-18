@@ -19,17 +19,19 @@ APK là bản dựng debug từ GitHub Actions. Khi cài đặt, cần cho phép
 từ nguồn không xác định. Nếu cài đè lên bản cũ mà máy báo lỗi chữ ký, gỡ
 bản cũ rồi cài lại (file trong thư mục `Download/VDM/` không bị mất).
 
-## Tính năng (bản 0.2.15)
+## Tính năng (bản 0.2.16)
 
 - Nhận link qua nút Chia sẻ của Android (ACTION_SEND, text/plain).
 - Quét link bằng yt-dlp, hiện tiêu đề, ảnh đại diện, thời lượng và danh sách
   chất lượng (1080p, 720p…), kèm lựa chọn chỉ lấy âm thanh.
 - Tải ở chế độ foreground service nên vẫn chạy khi tắt màn hình hay chuyển
   app, có thông báo tiến trình.
-- Tải đa kết nối bằng aria2c, gộp video + âm thanh bằng FFmpeg.
+- Tải song song nhiều mảnh bằng trình tải có sẵn của yt-dlp, gộp video + âm thanh bằng FFmpeg.
 - File lưu trong thư mục `Download/VDM/`, đặt tên theo dạng
   `VDM_ngày_tháng_năm_số-thứ-tự` (ví dụ `VDM_16_11_2026_001.mp4`), đếm lại
   từ 001 mỗi ngày.
+- Tải file trực tiếp (link `.png`, `.mp4`, `.zip`, `.pdf`, `.apk`…): nhận diện
+  tự động, tải thẳng giữ nguyên tên file gốc, trùng tên thì thêm số thứ tự.
 - Trình duyệt tích hợp: chặn quảng cáo 4 bộ lọc, tự bắt link video/âm thanh
   trên trang đang mở, bắt được link Douyin không logo.
 - Cập nhật bộ quét yt-dlp trong app (không cần chờ bản app mới).
@@ -40,7 +42,7 @@ bản cũ rồi cài lại (file trong thư mục `Download/VDM/` không bị m�
 ## Bộ máy
 
 - [youtubedl-android](https://github.com/yausername/youtubedl-android) 0.18.1
-  (nhúng Python + yt-dlp, FFmpeg, aria2c).
+  (nhúng Python + yt-dlp và FFmpeg).
 - Kotlin + Jetpack Compose (Material 3), minSdk 26 (Android 8.0+).
 
 ## Build
@@ -71,4 +73,3 @@ youtubedl-android (GPL-3.0).
 
 - yt-dlp và youtubedl-android (yausername) — bộ máy quét và tải video.
 - FFmpeg — gộp video/âm thanh và tách MP3.
-- aria2c — tải đa kết nối.

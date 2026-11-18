@@ -12,11 +12,11 @@ android {
         applicationId = "tungtq.so1.asia"
         minSdk = 26
         targetSdk = 35
-        versionCode = 18
-        versionName = "0.2.15"
+        versionCode = 19
+        versionName = "0.2.16"
 
         ndk {
-            // youtubedl-android nhúng Python/FFmpeg/aria2c cho cả 4 kiến trúc
+            // youtubedl-android nhúng Python/FFmpeg cho cả 4 kiến trúc
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
         }
     }
@@ -27,6 +27,18 @@ android {
             reset()
             include("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
             isUniversalApk = true
+        }
+    }
+
+    signingConfigs {
+        getByName("debug") {
+            // Keystore debug dùng chung, commit kèm repo để mọi lần build
+            // (máy bố, GitHub Actions) ký cùng 1 chữ ký, cài đè được.
+            // Đây là khóa debug, KHÔNG phải khóa phát hành.
+            storeFile = rootProject.file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
         }
     }
 
@@ -57,7 +69,6 @@ dependencies {
     val youtubedlAndroid = "0.18.1"
     implementation("io.github.junkfood02.youtubedl-android:library:$youtubedlAndroid")
     implementation("io.github.junkfood02.youtubedl-android:ffmpeg:$youtubedlAndroid")
-    implementation("io.github.junkfood02.youtubedl-android:aria2c:$youtubedlAndroid")
 
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.activity:activity-compose:1.9.3")

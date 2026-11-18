@@ -15,6 +15,7 @@ import java.io.FileOutputStream
 import java.io.RandomAccessFile
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLDecoder
 import java.net.URLEncoder
 import java.security.MessageDigest
 import java.text.SimpleDateFormat
@@ -39,6 +40,11 @@ data class VideoFormatOption(
     val directUrl: String? = null,
     /** Referer gửi kèm khi tải trực tiếp (một số CDN như Douyin yêu cầu). */
     val referer: String? = null,
+    /**
+     * Tên file gốc giữ lại khi tải file trực tiếp (link .png/.zip/.mp4...).
+     * Có tên này thì lượt tải giữ đúng tên file thay vì quy tắc VDM_ngày_số.
+     */
+    val fileName: String? = null,
 )
 
 /** Nội dung xem trước/nghe thử sau khi quét: link trực tiếp + header cần kèm khi mở. */
@@ -63,6 +69,16 @@ data class ScannedVideo(
     val previewAudio: PreviewMedia? = null,
     /** true khi kết quả đến từ nguồn dự phòng (tikwm) vì bộ quét chính lỗi. */
     val viaFallback: Boolean = false,
+)
+
+/** Link file trực tiếp đã nhận diện được (tải thẳng, không cần bộ quét video). */
+data class DirectFileInfo(
+    /** Tên file gốc (đã giải mã URL, chưa làm sạch ký tự lạ). */
+    val fileName: String,
+    /** Dung lượng đo được khi dò, null khi nhận diện bằng đuôi file. */
+    val sizeLabel: String?,
+    /** true khi file là ảnh (để hiện thumbnail xem trước). */
+    val isImage: Boolean,
 )
 
 object Downloader {
@@ -141,7 +157,7 @@ object Downloader {
     /**
      * Cấp tên gốc (chưa có đuôi) cho 1 lượt tải, đảm bảo chưa từng dùng trong
      * thư mục. Chỉ gọi 1 lần cho mỗi lượt tải ở download(): các lần thử lại
-     * (aria2, không cookie) dùng chung tên này để khỏi sinh file rời rạc.
+     * (không cookie) dùng chung tên này để khỏi sinh file rời rạc.
      */
     @Synchronized
     private fun allocateBaseName(dir: File): String {
@@ -177,6 +193,209 @@ object Downloader {
     }
 
     /**
+     * Nhận diện link file trực tiếp (vd https://.../ten-file.zip): trả về thông
+     * tin file để tải thẳng giữ tên gốc, không qua bộ quét video. Trả về null
+     * khi link không giống file (trang web, playlist HLS/DASH...) để luồng quét
+     * cũ xử lý như thường. Không bao giờ ném exception: dò lỗi thì trả null.
+     */
+    suspend fun detectDirectFile(url: String): DirectFileInfo? = withContext(Dispatchers.IO) {
+        try {
+            detectDirectFileSync(url)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun detectDirectFileSync(url: String): DirectFileInfo? {
+        val segment = urlSegmentName(url)
+        val ext = segment?.substringAfterLast('.', "")
+            ?.lowercase()
+            ?.takeIf { it.length in 1..10 && it.all { c -> c.isLetterOrDigit() } }
+        // Có đuôi file rõ ràng (không phải trang web/playlist) thì nhận ngay,
+        // khỏi tốn 1 request dò.
+        if (segment != null && ext != null && ext !in NON_FILE_EXTENSIONS) {
+            return DirectFileInfo(
+                fileName = segment,
+                sizeLabel = null,
+                isImage = ext in IMAGE_EXTENSIONS,
+            )
+        }
+        // Không có đuôi rõ ràng: dò 1 request Range để đọc Content-Type và
+        // Content-Disposition (vd link tải của Google Drive, link rút gọn).
+        return probeDirectFile(url)
+    }
+
+    /** Đuôi không tính là file: trang web và playlist luồng phát (để yt-dlp xử lý). */
+    private val NON_FILE_EXTENSIONS = setOf(
+        "html", "htm", "php", "asp", "aspx", "jsp", "m3u8", "mpd",
+    )
+
+    private val IMAGE_EXTENSIONS = setOf(
+        "png", "jpg", "jpeg", "gif", "webp", "bmp", "avif",
+    )
+
+    /** Tên đoạn cuối của đường dẫn URL, đã giải mã %XX; null khi không lấy được. */
+    private fun urlSegmentName(url: String): String? {
+        return try {
+            val path = URL(url).path ?: return null
+            val raw = path.substringAfterLast('/').takeIf { it.isNotBlank() } ?: return null
+            // Giữ nguyên dấu '+' trong tên file (URLDecoder sẽ đổi '+' thành khoảng trắng).
+            URLDecoder.decode(raw.replace("+", "%2B"), "UTF-8").trim()
+                .takeIf { it.isNotBlank() }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /**
+     * Dò 1 request Range 0-0: đọc Content-Type/Content-Disposition để biết link
+     * có phải file không, kèm dung lượng nếu máy chủ báo. Trả null khi là trang
+     * web, playlist, lỗi mạng hoặc máy chủ không trả đủ thông tin.
+     */
+    private fun probeDirectFile(url: String): DirectFileInfo? {
+        val connection = try {
+            URL(url).openConnection() as HttpURLConnection
+        } catch (_: Exception) {
+            return null
+        }
+        connection.instanceFollowRedirects = true
+        connection.connectTimeout = 8_000
+        connection.readTimeout = 10_000
+        connection.setRequestProperty("User-Agent", CHROME_UA)
+        connection.setRequestProperty("Range", "bytes=0-0")
+        try {
+            val code = connection.responseCode
+            if (code != HttpURLConnection.HTTP_PARTIAL && code !in 200..299) return null
+            val contentType = connection.contentType
+                ?.substringBefore(';')?.trim()?.lowercase() ?: ""
+            if (contentType.startsWith("text/html") ||
+                contentType == "application/vnd.apple.mpegurl" ||
+                contentType == "application/x-mpegurl" ||
+                contentType == "application/dash+xml"
+            ) {
+                return null
+            }
+            val total = if (code == HttpURLConnection.HTTP_PARTIAL) {
+                connection.getHeaderField("Content-Range")
+                    ?.substringAfter('/', "")?.toLongOrNull()?.takeIf { it > 0 }
+            } else {
+                connection.contentLengthLong.takeIf { it > 0 }
+            }
+            val fileName = dispositionFileName(connection.getHeaderField("Content-Disposition"))
+                ?: urlSegmentName(connection.url.toString())
+                ?: urlSegmentName(url)
+                ?: ("file" + (extensionForMime(contentType)?.let { ".$it" } ?: ""))
+            val ext = fileName.substringAfterLast('.', "").lowercase()
+            return DirectFileInfo(
+                fileName = fileName,
+                sizeLabel = formatSizeLabel(total),
+                isImage = ext in IMAGE_EXTENSIONS || contentType.startsWith("image/"),
+            )
+        } catch (_: Exception) {
+            return null
+        } finally {
+            try {
+                connection.inputStream.close()
+            } catch (_: Exception) {
+            }
+            connection.disconnect()
+        }
+    }
+
+    /** Lấy tên file trong header Content-Disposition (filename*= UTF-8 hoặc filename=). */
+    private fun dispositionFileName(header: String?): String? {
+        if (header.isNullOrBlank()) return null
+        // filename*=UTF-8''ten%20file.zip (RFC 5987)
+        val encoded = Regex("filename\\*=[^']*'[^']*'([^;]+)", RegexOption.IGNORE_CASE)
+            .find(header)?.groupValues?.get(1)?.trim()
+        if (!encoded.isNullOrBlank()) {
+            try {
+                return URLDecoder.decode(encoded.replace("+", "%2B"), "UTF-8").trim()
+                    .takeIf { it.isNotBlank() }
+            } catch (_: Exception) {
+            }
+        }
+        val plain = Regex("filename=\"([^\"]+)\"", RegexOption.IGNORE_CASE)
+            .find(header)?.groupValues?.get(1)
+            ?: Regex("filename=([^;\\s]+)", RegexOption.IGNORE_CASE)
+                .find(header)?.groupValues?.get(1)
+        return plain?.trim()?.takeIf { it.isNotBlank() }
+    }
+
+    /** Đuôi file suy ra từ Content-Type khi link không mang tên file. */
+    private fun extensionForMime(mimeType: String): String? {
+        return when (mimeType.lowercase()) {
+            "image/png" -> "png"
+            "image/jpeg" -> "jpg"
+            "image/gif" -> "gif"
+            "image/webp" -> "webp"
+            "video/mp4" -> "mp4"
+            "video/webm" -> "webm"
+            "video/x-matroska" -> "mkv"
+            "audio/mpeg" -> "mp3"
+            "audio/mp4" -> "m4a"
+            "application/pdf" -> "pdf"
+            "application/zip", "application/x-zip-compressed" -> "zip"
+            "application/x-rar-compressed", "application/vnd.rar" -> "rar"
+            "application/x-7z-compressed" -> "7z"
+            "application/vnd.android.package-archive" -> "apk"
+            "text/plain" -> "txt"
+            else -> null
+        }
+    }
+
+    /**
+     * Làm sạch tên file gốc để lưu an toàn: bỏ ký tự cấm của hệ thống file,
+     * chặn leo thư mục, giới hạn ~180 byte UTF-8 (để cả hậu tố tránh trùng vẫn
+     * dưới giới hạn 255 byte của hệ thống file).
+     */
+    fun sanitizeFileName(raw: String): String {
+        val base = raw.substringAfterLast('/').substringAfterLast('\\').trim()
+        val cleaned = base.map { c ->
+            if (c < ' ' || c in "/\\:*?\"<>|") '_' else c
+        }.joinToString("").trim().trim('.', ' ').trim()
+        if (cleaned.isBlank() || cleaned == "." || cleaned == "..") return "file"
+        val bytes = cleaned.toByteArray(Charsets.UTF_8)
+        if (bytes.size <= MAX_FILE_NAME_BYTES) return cleaned
+        val ext = cleaned.substringAfterLast('.', "")
+            .takeIf { it.isNotEmpty() && it.length <= 10 }
+        val stem = if (ext != null) cleaned.dropLast(ext.length + 1) else cleaned
+        val suffix = if (ext != null) ".$ext" else ""
+        val budget = MAX_FILE_NAME_BYTES - suffix.toByteArray(Charsets.UTF_8).size
+        val truncated = StringBuilder()
+        var used = 0
+        for (c in stem) {
+            val size = c.toString().toByteArray(Charsets.UTF_8).size
+            if (used + size > budget) break
+            truncated.append(c)
+            used += size
+        }
+        val result = (truncated.toString().trimEnd('.', ' ') + suffix).trim()
+        return result.ifBlank { "file" }
+    }
+
+    /** File chưa trùng tên trong thư mục: trùng thì thêm " (1)", " (2)"... trước đuôi. */
+    private fun uniqueFile(dir: File, name: String): File {
+        var candidate = File(dir, name)
+        if (!candidate.exists()) return candidate
+        val dot = name.lastIndexOf('.')
+        val stem = if (dot > 0) name.substring(0, dot) else name
+        val ext = if (dot > 0) name.substring(dot) else ""
+        var n = 1
+        while (true) {
+            candidate = File(dir, "$stem ($n)$ext")
+            if (!candidate.exists()) return candidate
+            n++
+        }
+    }
+
+    /** true khi tên file là ảnh (theo đuôi), để hiện thumbnail xem trước. */
+    fun isImageFileName(name: String): Boolean {
+        val ext = name.substringAfterLast('.', "").lowercase()
+        return ext in IMAGE_EXTENSIONS
+    }
+
+    /**
      * Quét link, trả về tiêu đề + danh sách chất lượng có thể tải.
      * Link rút gọn được mở rộng trước; nếu bộ quét chính (yt-dlp) lỗi với link
      * TikTok thì tự thử nguồn dự phòng tikwm.
@@ -184,32 +403,36 @@ object Downloader {
     suspend fun fetchInfo(url: String): ScannedVideo = withContext(Dispatchers.IO) {
         val resolvedUrl = resolveRedirects(url)
         val cookieFile = appContext?.let { CookieStore.cookieFileIfAny(it) }
-        try {
-            fetchViaYtDlp(resolvedUrl, cookieFile)
-        } catch (ytError: Exception) {
-            Log.w(TAG, "yt-dlp scan failed, trying fallback", ytError)
-            // Lỗi #15161: request gửi kèm cookie làm Facebook trả về dạng trang
-            // mà bộ quét không đọc được. Thử lại 1 lần không gửi cookie:
-            // video công khai thường đọc được bình thường.
-            if (isFacebookParseError(ytError) && cookieFile != null) {
-                try {
-                    return@withContext fetchViaYtDlp(resolvedUrl, null)
-                } catch (retryError: Exception) {
-                    Log.w(TAG, "facebook no-cookie retry failed", retryError)
-                    throw facebookGuidance(retryError)
-                }
-            }
-            if (isFacebookParseError(ytError)) throw facebookGuidance(ytError)
-            if (!isTikTokUrl(resolvedUrl)) throw ytError
+        // Quét không gửi cookie trước: video công khai đọc được ngay mà
+        // không lộ cookie đăng nhập, và tránh luôn lỗi #15161 của
+        // Facebook (request kèm cookie làm Facebook trả dạng trang mà
+        // bộ quét không đọc được). Chỉ thử kèm cookie đã lưu khi quét
+        // trần thất bại, tức video có thể cần đăng nhập.
+        val firstError = try {
+            return@withContext fetchViaYtDlp(resolvedUrl, null)
+        } catch (e: Exception) {
+            e
+        }
+        var ytError = firstError
+        if (cookieFile != null) {
             try {
-                fetchViaTikwm(resolvedUrl)
-            } catch (fbError: Exception) {
-                Log.e(TAG, "tikwm fallback failed", fbError)
-                throw Exception(
-                    "Không quét được link này. Bộ quét chính báo: " +
-                        "${ytError.message}; nguồn dự phòng báo: ${fbError.message}",
-                )
+                return@withContext fetchViaYtDlp(resolvedUrl, cookieFile)
+            } catch (e: Exception) {
+                Log.w(TAG, "yt-dlp scan with cookies failed", e)
+                ytError = e
             }
+        }
+        Log.w(TAG, "yt-dlp scan failed, trying fallback", ytError)
+        if (isFacebookParseError(ytError)) throw facebookGuidance(ytError)
+        if (!isTikTokUrl(resolvedUrl)) throw ytError
+        try {
+            fetchViaTikwm(resolvedUrl)
+        } catch (fbError: Exception) {
+            Log.e(TAG, "tikwm fallback failed", fbError)
+            throw Exception(
+                "Không quét được link này. Bộ quét chính báo: " +
+                    "${ytError.message}; nguồn dự phòng báo: ${fbError.message}",
+            )
         }
     }
 
@@ -588,6 +811,20 @@ object Downloader {
             )
         }
         val directUrl = option.directUrl
+        // File trực tiếp giữ tên gốc: tải thẳng, không đốt số thứ tự VDM_ngày_số.
+        if (!directUrl.isNullOrBlank() && !option.fileName.isNullOrBlank()) {
+            downloadDirect(
+                directUrl,
+                dir,
+                "",
+                false,
+                option.referer,
+                onProgress,
+                option.fileName,
+            )
+            // Trả về response rỗng để giữ nguyên chữ ký hàm cho DownloadService.
+            return@withContext YoutubeDLResponse(emptyList(), 0, 0L, "", "")
+        }
         // Cấp tên file 1 lần cho cả lượt tải: mọi đường tải (yt-dlp, tải
         // thẳng) và mọi lần thử lại đều dùng chung tên này.
         val baseName = allocateBaseName(dir)
@@ -614,7 +851,13 @@ object Downloader {
         }
     }
 
-    /** Tải qua yt-dlp: thử aria2 trước, lỗi do aria2 thì thử lại bằng trình tải thường. */
+    /**
+     * Tải qua yt-dlp bằng trình tải có sẵn của nó, tải song song 4 mảnh
+     * (-N). KHÔNG dùng aria2c nữa: yt-dlp trước 2026.06.09 mà dùng aria2c
+     * cho HLS/DASH thì dính CVE-2026-50574 (ghi file tùy ý qua manifest),
+     * và bản vá của upstream cũng bỏ hẳn aria2c cho HLS/DASH, khuyên
+     * chuyển sang -N.
+     */
     private fun downloadViaYtDlp(
         url: String,
         option: VideoFormatOption,
@@ -623,50 +866,31 @@ object Downloader {
         cookieFile: File?,
         onProgress: (Float, Long) -> Unit,
     ): YoutubeDLResponse {
-        val request = buildYtDlpRequest(url, option, dir, baseName, cookieFile, useAria2 = true)
-        try {
-            return executeRequest(request, onProgress)
-        } catch (ariaError: Exception) {
-            // Chỉ thử lại khi lỗi đến từ trình tải phụ aria2 (vd exit code 16:
-            // không tạo được file). Lỗi do link/video thì thử lại cũng vậy.
-            val message = ariaError.message ?: ""
-            if (cancelRequested || !message.contains("aria2c", ignoreCase = true)) {
-                throw ariaError
-            }
-            Log.w(TAG, "aria2 download failed, retrying with built-in downloader", ariaError)
-            val fallback = buildYtDlpRequest(url, option, dir, baseName, cookieFile, useAria2 = false)
-            try {
-                return executeRequest(fallback, onProgress)
-            } catch (fallbackError: Exception) {
-                throw Exception(
-                    "Tải bằng trình tải phụ thất bại (${ariaError.message}); " +
-                        "thử lại bằng cách tải thường cũng thất bại " +
-                        "(${fallbackError.message})",
-                )
-            }
-        }
+        val request = buildYtDlpRequest(url, option, dir, baseName, cookieFile)
+        return executeRequest(request, onProgress)
     }
 
-    /** Dựng request yt-dlp. [useAria2] = false thì dùng trình tải có sẵn của yt-dlp. */
+    /** Dựng request yt-dlp, dùng trình tải có sẵn với 4 mảnh song song. */
     private fun buildYtDlpRequest(
         url: String,
         option: VideoFormatOption,
         dir: File,
         baseName: String,
         cookieFile: File?,
-        useAria2: Boolean,
     ): YoutubeDLRequest {
         return YoutubeDLRequest(url).apply {
             addOption("--no-playlist")
             addOption("--no-mtime")
             addOption("--no-warnings")
+            // Tải song song 4 mảnh bằng trình tải có sẵn (thay cho aria2c).
+            addOption("-N", "4")
             withCookieFile(cookieFile)
             // Tên file cố định dạng VDM_ngày_tháng_năm_số-thứ-tự, chỉ để yt-dlp
             // tự điền đuôi theo định dạng thật (.mp4/.webm/.mp3...). Không lấy
             // tiêu đề nữa: tiêu đề mạng xã hội hay kèm lượt xem/tương tác
             // ("229K views · 6.5K reactions | ...") thành tên rác, lại dài quá
-            // 255 byte (tiếng Việt có dấu, mỗi chữ tới 3 byte) làm aria2 không
-            // tạo được file (exit code 16).
+            // 255 byte (tiếng Việt có dấu, mỗi chữ tới 3 byte) làm hệ thống
+            // file không tạo được file.
             addOption("-o", dir.absolutePath + "/$baseName.%(ext)s")
             if (option.isAudioOnly) {
                 addOption("--extract-audio")
@@ -674,16 +898,6 @@ object Downloader {
                 addOption("-f", "bestaudio/best")
             } else {
                 addOption("-f", option.formatSpec)
-            }
-            if (useAria2) {
-                // aria2c tải đa kết nối cho nhanh, giống bản desktop.
-                // file-allocation=none: tránh lỗi tạo file trên bộ nhớ ngoài
-                // của Android; allow-overwrite: tải lại cùng tên không bị từ chối.
-                addOption("--downloader", "libaria2c.so")
-                addOption(
-                    "--downloader-args",
-                    "aria2c:--file-allocation=none --allow-overwrite=true",
-                )
             }
         }
     }
@@ -703,6 +917,8 @@ object Downloader {
      * Tải thẳng 1 file từ link trực tiếp (nguồn dự phòng). File từ 4 MB trở lên
      * mà máy chủ hỗ trợ Range thì chia 4 đoạn tải song song; đứt giữa chừng thì
      * lần tải sau tải tiếp các đoạn còn thiếu thay vì tải lại từ đầu.
+     * [targetFileName] có thì giữ đúng tên file gốc (tải file trực tiếp),
+     * không thì đặt tên VDM_ngày_số + đuôi mp4/mp3 như cũ.
      */
     private suspend fun downloadDirect(
         fileUrl: String,
@@ -711,6 +927,7 @@ object Downloader {
         isAudio: Boolean,
         referer: String?,
         onProgress: (Float, Long) -> Unit,
+        targetFileName: String? = null,
     ) = withContext(Dispatchers.IO) {
         cleanStaleParts(dir)
         val ext = if (isAudio) "mp3" else "mp4"
@@ -736,7 +953,13 @@ object Downloader {
         } else {
             downloadSingle(fileUrl, referer, partFile, total, onProgress)
         }
-        val outFile = File(dir, "$baseName.$ext")
+        // Giữ tên file gốc (tải file trực tiếp) thì tránh trùng tên trong
+        // thư mục; còn lại đặt tên VDM_ngày_số + đuôi mp4/mp3 như cũ.
+        val outFile = if (targetFileName != null) {
+            uniqueFile(dir, sanitizeFileName(targetFileName))
+        } else {
+            File(dir, "$baseName.$ext")
+        }
         if (!partFile.renameTo(outFile)) {
             partFile.copyTo(outFile, overwrite = true)
             partFile.delete()
@@ -1059,6 +1282,9 @@ object Downloader {
 
     /** File từ 4 MB trở lên mới đáng chia đoạn tải song song. */
     private const val MIN_SEGMENTED_BYTES = 4L * 1024 * 1024
+
+    /** Tên file gốc tối đa 180 byte UTF-8, để cả hậu tố tránh trùng vẫn dưới 255 byte. */
+    private const val MAX_FILE_NAME_BYTES = 180
 
     /** Số đoạn tải song song cho file lớn. */
     private const val SEGMENT_COUNT = 4

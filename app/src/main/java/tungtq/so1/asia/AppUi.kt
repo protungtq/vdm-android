@@ -83,7 +83,8 @@ import androidx.core.content.ContextCompat
 import coil.compose.AsyncImage
 import tungtq.so1.asia.dl.Downloader
 
-private val VdmRed = Color(0xFFDC2626)
+/** Màu đỏ thương hiệu của VDM, dùng chung cho mọi màn hình. */
+internal val VdmRed = Color(0xFFDC2626)
 private val VdmDarkRed = Color(0xFF991B1B)
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -219,7 +220,9 @@ fun VdmApp(viewModel: MainViewModel) {
         }
         if (uiState.showBrowser) {
             BrowserScreen(
-                onMediaFound = viewModel::onBrowserMediaFound,
+                onMediaFound = { url, title, pageUrl, fileName ->
+                    viewModel.onBrowserMediaFound(url, title, pageUrl, fileName)
+                },
                 onScanPage = viewModel::scanPage,
                 onClose = viewModel::closeBrowser,
             )
@@ -268,7 +271,7 @@ fun VdmApp(viewModel: MainViewModel) {
                         OutlinedTextField(
                             value = uiState.urlText,
                             onValueChange = viewModel::setUrl,
-                            label = { Text("Dán link video (YouTube, Facebook, TikTok…)") },
+                            label = { Text("Dán link video hoặc file (YouTube, Facebook, TikTok…)") },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
                             trailingIcon = {
@@ -289,7 +292,7 @@ fun VdmApp(viewModel: MainViewModel) {
                         Button(
                             onClick = { viewModel.scan() },
                             enabled = !uiState.scanning && uiState.engineReady,
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
                         ) {
                             Icon(Icons.Default.Search, contentDescription = null)
                             Spacer(Modifier.width(8.dp))
@@ -326,11 +329,17 @@ fun VdmApp(viewModel: MainViewModel) {
                                         .fillMaxWidth()
                                         .aspectRatio(16f / 9f)
                                         .clip(RoundedCornerShape(8.dp))
-                                        .clickable { viewModel.openImageViewer() },
+                                        .clickable(onClickLabel = "Xem ảnh phóng to") {
+                                            viewModel.openImageViewer()
+                                        },
                                 )
                                 Spacer(Modifier.height(12.dp))
                             }
-                            Text(scanned.title, fontWeight = FontWeight.Bold)
+                            Text(
+                                scanned.title,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                            )
                             if (scanned.viaFallback) {
                                 Text(
                                     "Đang dùng nguồn dự phòng, vì bộ quét chính không đọc được link này.",
@@ -345,7 +354,11 @@ fun VdmApp(viewModel: MainViewModel) {
                                 Text(meta, style = MaterialTheme.typography.bodySmall)
                             }
                             Spacer(Modifier.height(12.dp))
-                            Text("Chọn chất lượng:", fontWeight = FontWeight.SemiBold)
+                            Text(
+                                "Chọn chất lượng:",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                            )
                             scanned.options.forEach { option ->
                                 Row(
                                     modifier = Modifier
@@ -380,7 +393,7 @@ fun VdmApp(viewModel: MainViewModel) {
                                 ) {
                                     OutlinedButton(
                                         onClick = { viewModel.openPreview() },
-                                        modifier = Modifier.weight(1f),
+                                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
                                     ) {
                                         Icon(Icons.Default.PlayArrow, contentDescription = null)
                                         Spacer(Modifier.width(8.dp))
@@ -388,7 +401,7 @@ fun VdmApp(viewModel: MainViewModel) {
                                     }
                                     OutlinedButton(
                                         onClick = { viewModel.openExternalPlayer(context) },
-                                        modifier = Modifier.weight(1f),
+                                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
                                     ) {
                                         Icon(Icons.Default.OpenInNew, contentDescription = null)
                                         Spacer(Modifier.width(8.dp))
@@ -400,7 +413,10 @@ fun VdmApp(viewModel: MainViewModel) {
                             if (download.isDownloading) {
                                 LinearProgressIndicator(
                                     progress = { (download.progress / 100f).coerceIn(0f, 1f) },
-                                    modifier = Modifier.fillMaxWidth(),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(6.dp)
+                                        .clip(RoundedCornerShape(3.dp)),
                                 )
                                 Spacer(Modifier.height(8.dp))
                                 Text(
@@ -414,12 +430,12 @@ fun VdmApp(viewModel: MainViewModel) {
                                 Spacer(Modifier.height(8.dp))
                                 OutlinedButton(
                                     onClick = { viewModel.cancelDownload(context) },
-                                    modifier = Modifier.fillMaxWidth(),
+                                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
                                 ) { Text("Hủy tải") }
                             } else {
                                 Button(
                                     onClick = { tryStartDownload() },
-                                    modifier = Modifier.fillMaxWidth(),
+                                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
                                     colors = ButtonDefaults.buttonColors(containerColor = VdmRed),
                                 ) {
                                     Icon(Icons.Default.Download, contentDescription = null)
@@ -436,19 +452,31 @@ fun VdmApp(viewModel: MainViewModel) {
                 }
 
                 uiState.message?.let { message ->
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(message, modifier = Modifier.weight(1f))
-                            TextButton(onClick = { viewModel.clearMessage() }) { Text("Đóng") }
-                        }
-                        if (uiState.douyinFallbackUrl != null) {
-                            OutlinedButton(
-                                onClick = { viewModel.openDouyinWebView() },
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Icon(Icons.Default.OpenInNew, contentDescription = null)
-                                Spacer(Modifier.width(8.dp))
-                                Text("Thử lấy link qua trình duyệt")
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        ),
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(message, modifier = Modifier.weight(1f))
+                                TextButton(
+                                    onClick = { viewModel.clearMessage() },
+                                    modifier = Modifier.heightIn(min = 48.dp),
+                                ) { Text("Đóng") }
+                            }
+                            if (uiState.douyinFallbackUrl != null) {
+                                OutlinedButton(
+                                    onClick = { viewModel.openDouyinWebView() },
+                                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                                ) {
+                                    Icon(Icons.Default.OpenInNew, contentDescription = null)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Thử lấy link qua trình duyệt")
+                                }
                             }
                         }
                     }
@@ -468,7 +496,7 @@ fun VdmApp(viewModel: MainViewModel) {
                         ) {
                             OutlinedButton(
                                 onClick = { viewModel.openDownloadedFiles() },
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier.weight(1f).heightIn(min = 48.dp),
                             ) {
                                 Icon(Icons.Default.FolderOpen, contentDescription = null)
                                 Spacer(Modifier.width(8.dp))
@@ -477,7 +505,7 @@ fun VdmApp(viewModel: MainViewModel) {
                             OutlinedButton(
                                 onClick = { viewModel.updateEngine() },
                                 enabled = !uiState.updatingEngine && uiState.engineReady,
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier.weight(1f).heightIn(min = 48.dp),
                             ) {
                                 Icon(Icons.Default.Refresh, contentDescription = null)
                                 Spacer(Modifier.width(8.dp))
@@ -491,9 +519,14 @@ fun VdmApp(viewModel: MainViewModel) {
                             }
                         }
                         Spacer(Modifier.height(8.dp))
+                        Text(
+                            "Bộ quét đang dùng: ${uiState.engineVersion ?: "chưa xác định được"}.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        Spacer(Modifier.height(8.dp))
                         OutlinedButton(
                             onClick = { viewModel.openCookiePlatforms() },
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
                         ) {
                             Icon(Icons.Default.Lock, contentDescription = null)
                             Spacer(Modifier.width(8.dp))
@@ -502,7 +535,7 @@ fun VdmApp(viewModel: MainViewModel) {
                         Spacer(Modifier.height(8.dp))
                         OutlinedButton(
                             onClick = { viewModel.openBrowser() },
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
                         ) {
                             Icon(Icons.Default.Public, contentDescription = null)
                             Spacer(Modifier.width(8.dp))
