@@ -1,6 +1,7 @@
 package tungtq.so1.asia.dl
 
 import android.content.Context
+import android.media.MediaScannerConnection
 import android.os.Environment
 import android.util.Log
 import android.webkit.CookieManager
@@ -146,6 +147,30 @@ object Downloader {
         )
 
     /**
+     * Báo cho thư viện ảnh/nhạc của máy biết thư mục tải có file mới, để
+     * Google Photos, Telegram... thấy video ngay mà không cần khởi động lại
+     * máy. Chỉ quét file media đã tải xong, bỏ qua file dở (.part) và file
+     * tạm. Gọi sau mỗi lượt tải thành công.
+     */
+    private fun notifyMediaStore(dir: File) {
+        val context = appContext ?: return
+        val mediaFiles = dir.listFiles()?.filter {
+            it.isFile && it.extension.lowercase() in MEDIA_EXTENSIONS
+        } ?: return
+        if (mediaFiles.isEmpty()) return
+        try {
+            MediaScannerConnection.scanFile(
+                context,
+                mediaFiles.map { it.absolutePath }.toTypedArray(),
+                null,
+                null,
+            )
+        } catch (_: Exception) {
+            // Không báo được thì thôi, file vẫn nằm nguyên trong thư mục.
+        }
+    }
+
+    /**
      * Tên file tải về: VDM_ngày_tháng_năm_số-thứ-tự, vd VDM_16_11_2026_001.mp4.
      * Số thứ tự đếm theo ngày, lưu trong SharedPreferences để không trùng khi
      * tải nhiều file cùng ngày; sang ngày mới thì đếm lại từ 001.
@@ -153,6 +178,11 @@ object Downloader {
     private const val NAME_PREFS = "vdm_file_names"
     private const val KEY_LAST_DATE = "last_date"
     private const val KEY_COUNTER = "counter"
+
+    /** Đuôi file media cần báo cho thư viện của máy sau khi tải xong. */
+    private val MEDIA_EXTENSIONS = setOf(
+        "mp4", "mkv", "webm", "mov", "mp3", "m4a", "aac", "opus", "wav", "flac",
+    )
 
     /**
      * Cấp tên gốc (chưa có đuôi) cho 1 lượt tải, đảm bảo chưa từng dùng trong
@@ -822,6 +852,7 @@ object Downloader {
                 onProgress,
                 option.fileName,
             )
+            notifyMediaStore(dir)
             // Trả về response rỗng để giữ nguyên chữ ký hàm cho DownloadService.
             return@withContext YoutubeDLResponse(emptyList(), 0, 0L, "", "")
         }
@@ -830,18 +861,23 @@ object Downloader {
         val baseName = allocateBaseName(dir)
         if (!directUrl.isNullOrBlank()) {
             downloadDirect(directUrl, dir, baseName, option.isAudioOnly, option.referer, onProgress)
+            notifyMediaStore(dir)
             // Trả về response rỗng để giữ nguyên chữ ký hàm cho DownloadService.
             return@withContext YoutubeDLResponse(emptyList(), 0, 0L, "", "")
         }
         val cookieFile = appContext?.let { CookieStore.cookieFileIfAny(it) }
         try {
-            return@withContext downloadViaYtDlp(url, option, dir, baseName, cookieFile, onProgress)
+            val response = downloadViaYtDlp(url, option, dir, baseName, cookieFile, onProgress)
+            notifyMediaStore(dir)
+            return@withContext response
         } catch (e: Exception) {
             // Lỗi #15161 (xem fetchInfo): thử lại 1 lần không gửi cookie.
             if (isFacebookParseError(e) && cookieFile != null && !cancelRequested) {
                 Log.w(TAG, "facebook download failed with cookies, retrying without", e)
                 try {
-                    return@withContext downloadViaYtDlp(url, option, dir, baseName, null, onProgress)
+                    val response = downloadViaYtDlp(url, option, dir, baseName, null, onProgress)
+                    notifyMediaStore(dir)
+                    return@withContext response
                 } catch (retryError: Exception) {
                     throw facebookGuidance(retryError)
                 }
