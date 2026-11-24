@@ -24,13 +24,20 @@ object ThreadsDirect {
         "www.threads.com",
     )
 
-    /** true khi url là link bài Threads dạng /@user/post/<id> (sau khi đã theo redirect). */
+    /**
+     * true khi url là link bài Threads: dạng /@user/post/<id>, hoặc link chia
+     * sẻ dạng /share/... (trình duyệt tự chuyển về trang bài khi mở).
+     * Link chia sẻ phải nhận ở đây vì Downloader.resolveUrl chỉ theo redirect
+     * cho link rút gọn TikTok/Douyin, link Threads share tới đây vẫn còn
+     * nguyên dạng /share/... — không nhận thì rơi xuống yt-dlp và lỗi
+     * "Unsupported URL" như bản 0.2.18.
+     */
     fun isThreadsPost(url: String): Boolean {
         return try {
             val parsed = java.net.URL(url)
             val host = parsed.host.lowercase()
             if (host !in THREADS_HOSTS) return false
-            "/post/" in parsed.path
+            "/post/" in parsed.path || parsed.path.startsWith("/share/")
         } catch (_: Exception) {
             false
         }

@@ -1,0 +1,1 @@
+Fixed shared Threads links (/share/...) still reporting "Unsupported URL": the app only recognised /post/ links, so shared links fell through to yt-dlp; shared links now open in the in-app browser to capture the video too.

@@ -1,0 +1,1 @@
+Sửa lỗi link Threads dạng chia sẻ (/share/...) vẫn báo "Unsupported URL": app chỉ nhận link bài dạng /post/ nên link chia sẻ rơi xuống yt-dlp; giờ link chia sẻ cũng mở trong trình duyệt để bắt video.
