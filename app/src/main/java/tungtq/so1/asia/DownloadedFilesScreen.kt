@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -35,7 +36,10 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -59,25 +63,58 @@ import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import tungtq.so1.asia.dl.DownloadHistory
 import tungtq.so1.asia.dl.Downloader
+import tungtq.so1.asia.dl.HistoryEntry
 
-/** Màn hình liệt kê file đã tải trong thư mục Download/VDM. */
+/**
+ * Màn hình liệt kê file đã tải trong thư mục Download/VDM,
+ * kèm tab Lịch sử đọc từ file Download/VDM/history.json.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DownloadedFilesScreen(viewModel: MainViewModel, onClose: () -> Unit) {
     val context = LocalContext.current
     var files by remember { mutableStateOf(listOf<File>()) }
+    var history by remember { mutableStateOf(listOf<HistoryEntry>()) }
     var refreshKey by remember { mutableIntStateOf(0) }
+    var tab by remember { mutableIntStateOf(0) }
+    var showClearConfirm by remember { mutableStateOf(false) }
 
-    LaunchedEffect(refreshKey) {
-        files = withContext(Dispatchers.IO) {
-            val dir = Downloader.downloadDir()
-            (dir.listFiles()?.toList() ?: emptyList())
-                .filter { it.isFile }
-                .sortedByDescending { it.lastModified() }
+    LaunchedEffect(refreshKey, tab) {
+        if (tab == 0) {
+            files = withContext(Dispatchers.IO) {
+                val dir = Downloader.downloadDir()
+                (dir.listFiles()?.toList() ?: emptyList())
+                    .filter {
+                        it.isFile && it.name != DownloadHistory.FILE_NAME &&
+                            it.name != "history.json.tmp"
+                    }
+                    .sortedByDescending { it.lastModified() }
+            }
+        } else {
+            history = withContext(Dispatchers.IO) { DownloadHistory.load() }
         }
     }
     BackHandler(onBack = onClose)
+
+    if (showClearConfirm) {
+        AlertDialog(
+            onDismissRequest = { showClearConfirm = false },
+            title = { Text("Xóa hết lịch sử?") },
+            text = { Text("Chỉ xóa danh sách lịch sử, file đã tải vẫn còn nguyên trong thư mục.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    DownloadHistory.clear()
+                    showClearConfirm = false
+                    refreshKey++
+                }) { Text("Xóa hết") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearConfirm = false }) { Text("Hủy") }
+            },
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -103,91 +140,250 @@ fun DownloadedFilesScreen(viewModel: MainViewModel, onClose: () -> Unit) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text(
-                "Thư mục Download/VDM trên điện thoại.",
-                style = MaterialTheme.typography.bodySmall,
-            )
-            OutlinedButton(
-                onClick = {
-                    if (!viewModel.openFolderExternal(context)) {
-                        Toast.makeText(
-                            context,
-                            "Máy này không mở thẳng được thư mục, file nằm trong Download/VDM.",
-                            Toast.LENGTH_LONG,
-                        ).show()
-                    }
-                },
-                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-            ) {
-                Icon(Icons.Default.FolderOpen, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text("Mở trong trình quản lý file")
+            TabRow(selectedTabIndex = tab) {
+                Tab(
+                    selected = tab == 0,
+                    onClick = { tab = 0 },
+                    text = { Text("File") },
+                )
+                Tab(
+                    selected = tab == 1,
+                    onClick = { tab = 1 },
+                    text = { Text("Lịch sử") },
+                )
             }
-            if (files.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    contentAlignment = Alignment.Center,
+            if (tab == 0) {
+                Text(
+                    "Thư mục Download/VDM trên điện thoại.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                OutlinedButton(
+                    onClick = {
+                        if (!viewModel.openFolderExternal(context)) {
+                            Toast.makeText(
+                                context,
+                                "Máy này không mở thẳng được thư mục, file nằm trong Download/VDM.",
+                                Toast.LENGTH_LONG,
+                            ).show()
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
                 ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    Icon(Icons.Default.FolderOpen, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Mở trong trình quản lý file")
+                }
+                if (files.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center,
                     ) {
-                        Icon(
-                            Icons.Default.FolderOpen,
-                            contentDescription = null,
-                            modifier = Modifier.size(48.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Text(
-                            "Chưa có file nào. File tải xong sẽ hiện ở đây.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Icon(
+                                Icons.Default.FolderOpen,
+                                contentDescription = null,
+                                modifier = Modifier.size(48.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Text(
+                                "Chưa có file nào. File tải xong sẽ hiện ở đây.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        items(files, key = { it.absolutePath }) { file ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { openFile(context, file) }
+                                    .padding(vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(
+                                    fileIcon(file),
+                                    contentDescription = null,
+                                )
+                                Spacer(Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        file.name,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    Text(
+                                        "${formatFileSize(file.length())} · " +
+                                            formatFileDate(file.lastModified()),
+                                        style = MaterialTheme.typography.bodySmall,
+                                    )
+                                }
+                                IconButton(onClick = {
+                                    if (file.delete()) refreshKey++
+                                }) {
+                                    Icon(Icons.Default.Delete, contentDescription = "Xóa file")
+                                }
+                            }
+                            HorizontalDivider()
+                        }
                     }
                 }
             } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                Text(
+                    "Lịch sử tải lưu trong file history.json ở thư mục Download/VDM, " +
+                        "kể cả file đã xóa khỏi máy vẫn còn dấu.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    items(files, key = { it.absolutePath }) { file ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { openFile(context, file) }
-                                .padding(vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
+                    OutlinedButton(
+                        onClick = { shareHistoryFile(context) },
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                    ) {
+                        Text("Chia sẻ file lịch sử")
+                    }
+                    OutlinedButton(
+                        onClick = { showClearConfirm = true },
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                    ) {
+                        Text("Xóa hết lịch sử")
+                    }
+                }
+                if (history.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             Icon(
-                                fileIcon(file),
+                                Icons.Default.FolderOpen,
                                 contentDescription = null,
+                                modifier = Modifier.size(48.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                            Spacer(Modifier.width(12.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    file.name,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                                Text(
-                                    "${formatFileSize(file.length())} · " +
-                                        formatFileDate(file.lastModified()),
-                                    style = MaterialTheme.typography.bodySmall,
-                                )
-                            }
-                            IconButton(onClick = {
-                                if (file.delete()) refreshKey++
-                            }) {
-                                Icon(Icons.Default.Delete, contentDescription = "Xóa file")
-                            }
+                            Text(
+                                "Chưa có lượt tải nào. Tải xong 1 video là lịch sử tự ghi vào đây.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
                         }
-                        HorizontalDivider()
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        items(history, key = { it.url + it.fileName + it.downloadedAt }) { entry ->
+                            val file = File(Downloader.downloadDir(), entry.fileName)
+                            val exists = file.exists()
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        if (exists) {
+                                            openFile(context, file)
+                                        } else {
+                                            Toast.makeText(
+                                                context,
+                                                "File này đã bị xóa khỏi máy.",
+                                                Toast.LENGTH_SHORT,
+                                            ).show()
+                                        }
+                                    }
+                                    .padding(vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(
+                                    fileIcon(file),
+                                    contentDescription = null,
+                                    tint = if (exists) {
+                                        MaterialTheme.colorScheme.onSurface
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                                )
+                                Spacer(Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        entry.title,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                        color = if (exists) {
+                                            Color.Unspecified
+                                        } else {
+                                            MaterialTheme.colorScheme.onSurfaceVariant
+                                        },
+                                    )
+                                    Text(
+                                        "${entry.host} · ${formatFileSize(entry.sizeBytes)} · " +
+                                            formatFileDate(entry.downloadedAt),
+                                        style = MaterialTheme.typography.bodySmall,
+                                    )
+                                    if (!exists) {
+                                        Text(
+                                            "File đã không còn trên máy.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                                IconButton(onClick = {
+                                    DownloadHistory.remove(entry)
+                                    refreshKey++
+                                }) {
+                                    Icon(Icons.Default.Delete, contentDescription = "Xóa khỏi lịch sử")
+                                }
+                            }
+                            HorizontalDivider()
+                        }
                     }
                 }
             }
         }
+    }
+}
+
+/** Chia sẻ file history.json qua app khác (Zalo, Gmail, Drive...). */
+private fun shareHistoryFile(context: Context) {
+    val file = DownloadHistory.historyFile()
+    if (!file.exists()) {
+        Toast.makeText(context, "Chưa có lịch sử tải.", Toast.LENGTH_SHORT).show()
+        return
+    }
+    try {
+        val uri = FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            file,
+        )
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "application/json"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(intent, "Chia sẻ file lịch sử"))
+    } catch (e: Exception) {
+        Toast.makeText(
+            context,
+            "Không chia sẻ được: ${e.message ?: "lỗi không rõ"}",
+            Toast.LENGTH_SHORT,
+        ).show()
     }
 }
 

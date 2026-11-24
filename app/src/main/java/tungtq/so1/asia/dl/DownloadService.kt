@@ -64,7 +64,7 @@ class DownloadService : Service() {
                     referer,
                     fileName,
                 )
-                Downloader.download(url, option) { progress, eta ->
+                Downloader.download(url, option, title) { progress, eta ->
                     DownloadState.update(progress, eta)
                     maybeUpdateNotification(title, progress)
                 }

@@ -271,7 +271,7 @@ fun VdmApp(viewModel: MainViewModel) {
                         OutlinedTextField(
                             value = uiState.urlText,
                             onValueChange = viewModel::setUrl,
-                            label = { Text("Dán link video hoặc file (YouTube, Facebook, TikTok…)") },
+                            label = { Text("Dán link video hoặc file (YouTube, Facebook, TikTok, Instagram, Threads…)") },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
                             trailingIcon = {

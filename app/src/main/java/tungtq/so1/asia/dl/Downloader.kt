@@ -829,6 +829,7 @@ object Downloader {
     suspend fun download(
         url: String,
         option: VideoFormatOption,
+        title: String? = null,
         onProgress: (Float, Long) -> Unit,
     ): YoutubeDLResponse = withContext(Dispatchers.IO) {
         cancelRequested = false
@@ -843,7 +844,7 @@ object Downloader {
         val directUrl = option.directUrl
         // File trực tiếp giữ tên gốc: tải thẳng, không đốt số thứ tự VDM_ngày_số.
         if (!directUrl.isNullOrBlank() && !option.fileName.isNullOrBlank()) {
-            downloadDirect(
+            val outFile = downloadDirect(
                 directUrl,
                 dir,
                 "",
@@ -852,6 +853,7 @@ object Downloader {
                 onProgress,
                 option.fileName,
             )
+            recordHistory(url, title, option, outFile)
             notifyMediaStore(dir)
             // Trả về response rỗng để giữ nguyên chữ ký hàm cho DownloadService.
             return@withContext YoutubeDLResponse(emptyList(), 0, 0L, "", "")
@@ -860,7 +862,15 @@ object Downloader {
         // thẳng) và mọi lần thử lại đều dùng chung tên này.
         val baseName = allocateBaseName(dir)
         if (!directUrl.isNullOrBlank()) {
-            downloadDirect(directUrl, dir, baseName, option.isAudioOnly, option.referer, onProgress)
+            val outFile = downloadDirect(
+                directUrl,
+                dir,
+                baseName,
+                option.isAudioOnly,
+                option.referer,
+                onProgress,
+            )
+            recordHistory(url, title, option, outFile)
             notifyMediaStore(dir)
             // Trả về response rỗng để giữ nguyên chữ ký hàm cho DownloadService.
             return@withContext YoutubeDLResponse(emptyList(), 0, 0L, "", "")
@@ -868,6 +878,7 @@ object Downloader {
         val cookieFile = appContext?.let { CookieStore.cookieFileIfAny(it) }
         try {
             val response = downloadViaYtDlp(url, option, dir, baseName, cookieFile, onProgress)
+            recordHistory(url, title, option, findDownloadedFile(dir, baseName))
             notifyMediaStore(dir)
             return@withContext response
         } catch (e: Exception) {
@@ -876,6 +887,7 @@ object Downloader {
                 Log.w(TAG, "facebook download failed with cookies, retrying without", e)
                 try {
                     val response = downloadViaYtDlp(url, option, dir, baseName, null, onProgress)
+                    recordHistory(url, title, option, findDownloadedFile(dir, baseName))
                     notifyMediaStore(dir)
                     return@withContext response
                 } catch (retryError: Exception) {
@@ -885,6 +897,37 @@ object Downloader {
             if (isFacebookParseError(e)) throw facebookGuidance(e)
             throw e
         }
+    }
+
+    /**
+     * Ghi 1 mục vào lịch sử tải. [outputFile] là file vừa tải xong
+     * (null thì bỏ qua, không ghi).
+     */
+    private fun recordHistory(
+        url: String,
+        title: String?,
+        option: VideoFormatOption,
+        outputFile: File?,
+    ) {
+        val file = outputFile?.takeIf { it.exists() && it.isFile } ?: return
+        DownloadHistory.record(
+            HistoryEntry(
+                url = url,
+                title = title?.takeIf { it.isNotBlank() } ?: file.name,
+                fileName = file.name,
+                sizeBytes = file.length(),
+                downloadedAt = System.currentTimeMillis(),
+                host = DownloadHistory.hostLabel(url),
+                formatLabel = option.label,
+            ),
+        )
+    }
+
+    /** File yt-dlp vừa ghi (tên bắt đầu bằng baseName), null khi không thấy. */
+    private fun findDownloadedFile(dir: File, baseName: String): File? {
+        return dir.listFiles()
+            ?.filter { it.isFile && it.name.startsWith("$baseName.") }
+            ?.maxByOrNull { it.length() }
     }
 
     /**
@@ -964,7 +1007,7 @@ object Downloader {
         referer: String?,
         onProgress: (Float, Long) -> Unit,
         targetFileName: String? = null,
-    ) = withContext(Dispatchers.IO) {
+    ): File = withContext(Dispatchers.IO) {
         cleanStaleParts(dir)
         val ext = if (isAudio) "mp3" else "mp4"
         val key = sha256Hex(fileUrl).take(16)
@@ -1002,6 +1045,7 @@ object Downloader {
         }
         metaFile.delete()
         onProgress(100f, 0L)
+        outFile
     }
 
     private data class DownloadProbe(val total: Long?, val rangeSupported: Boolean)

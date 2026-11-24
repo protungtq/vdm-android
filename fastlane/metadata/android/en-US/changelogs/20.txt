@@ -1,0 +1,1 @@
+Download history is now saved to history.json in the Download/VDM folder, including files deleted from the device. Added Instagram and Threads to the supported hosts; Instagram can use cookies from Cookie & login.

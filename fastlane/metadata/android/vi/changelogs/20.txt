@@ -1,0 +1,1 @@
+Lưu lịch sử tải vào file history.json trong thư mục Download/VDM, xem lại được cả file đã xóa khỏi máy. Thêm Instagram và Threads vào danh sách host tải được; Instagram có thể lấy cookie trong mục Cookie & đăng nhập.

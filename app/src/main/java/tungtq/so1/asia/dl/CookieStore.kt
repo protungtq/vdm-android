@@ -29,6 +29,13 @@ enum class CookiePlatform(
         cookieDomain = ".tiktok.com",
         hint = "Chỉ cần khi gặp link TikTok bị chặn. Đăng nhập nếu muốn, hoặc chỉ mở trang rồi lưu.",
     ),
+    INSTAGRAM(
+        label = "Instagram",
+        startUrl = "https://www.instagram.com/",
+        cookieUrls = listOf("https://www.instagram.com/"),
+        cookieDomain = ".instagram.com",
+        hint = "Đăng nhập tài khoản Instagram trong trang này, đợi đăng nhập xong rồi bấm Lưu cookie. Cần cho các bài chỉ xem được khi đăng nhập.",
+    ),
     X(
         label = "X (Twitter)",
         startUrl = "https://x.com/",
