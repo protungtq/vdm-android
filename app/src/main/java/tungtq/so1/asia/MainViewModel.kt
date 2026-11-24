@@ -18,6 +18,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import tungtq.so1.asia.dl.CookiePlatform
 import tungtq.so1.asia.dl.DouyinDirect
+import tungtq.so1.asia.dl.ThreadsDirect
 import tungtq.so1.asia.dl.DownloadService
 import tungtq.so1.asia.dl.DownloadState
 import tungtq.so1.asia.dl.Downloader
@@ -45,6 +46,10 @@ data class VdmUiState(
     val douyinFallbackUrl: String? = null,
     /** Link trang video Douyin đang mở trong WebView lấy link. */
     val douyinWebViewUrl: String? = null,
+    /** Link bài Threads, chờ mở trong WebView để bắt link video trực tiếp. */
+    val threadsFallbackUrl: String? = null,
+    /** Link trang bài Threads đang mở trong WebView lấy link. */
+    val threadsWebViewUrl: String? = null,
     /** Đang mở trình duyệt trong app. */
     val showBrowser: Boolean = false,
     /** Chi tiết lỗi làm app tự đóng ở lần chạy trước, để hiện hộp báo lỗi. */
@@ -136,6 +141,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     preview = null,
                     showImageViewer = false,
                     douyinFallbackUrl = null,
+                    threadsFallbackUrl = null,
                 )
             }
             try {
@@ -162,6 +168,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                 douyinWebViewUrl = resolved,
                             )
                         }
+                    }
+                    return@launch
+                }
+                // Link Threads: yt-dlp không có extractor cho Threads nên quét
+                // bằng bộ quét chính chỉ ra lỗi "Unsupported URL"; mở thẳng
+                // trình duyệt bắt link video trực tiếp như đường Douyin.
+                if (ThreadsDirect.isThreadsPost(resolved)) {
+                    _uiState.update {
+                        it.copy(
+                            scanning = false,
+                            threadsFallbackUrl = resolved,
+                            threadsWebViewUrl = resolved,
+                        )
                     }
                     return@launch
                 }
@@ -395,7 +414,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun clearMessage() {
-        _uiState.update { it.copy(message = null, douyinFallbackUrl = null) }
+        _uiState.update { it.copy(message = null, douyinFallbackUrl = null, threadsFallbackUrl = null) }
     }
 
     /** Mở trang video Douyin trong trình duyệt của app để lấy link trực tiếp. */
@@ -409,6 +428,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun closeDouyinWebView() {
         _uiState.update { it.copy(douyinWebViewUrl = null) }
+    }
+
+    /** Mở trang bài Threads trong trình duyệt của app để lấy link trực tiếp. */
+    fun openThreadsWebView() {
+        val url = _uiState.value.threadsFallbackUrl ?: return
+        viewModelScope.launch {
+            val resolved = Downloader.resolveUrl(url)
+            _uiState.update { it.copy(threadsWebViewUrl = resolved) }
+        }
+    }
+
+    fun closeThreadsWebView() {
+        _uiState.update { it.copy(threadsWebViewUrl = null) }
     }
 
     fun openBrowser() {
@@ -542,6 +574,54 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         noWatermark: Boolean,
     ) {
         onDouyinVideoFound(directUrl, pageTitle, noWatermark)
+        startDownload(context)
+    }
+
+    /** WebView đã lấy được link video Threads trực tiếp: dựng kết quả quét để tải như thường. */
+    fun onThreadsVideoFound(directUrl: String, pageTitle: String?) {
+        val state = _uiState.value
+        val referer = ThreadsDirect.REFERER
+        val option = VideoFormatOption(
+            formatSpec = Downloader.DIRECT_SPEC,
+            label = "Video (tải trực tiếp)",
+            sizeLabel = null,
+            directUrl = directUrl,
+            referer = referer,
+        )
+        _uiState.update {
+            it.copy(
+                threadsWebViewUrl = null,
+                threadsFallbackUrl = null,
+                message = null,
+                urlText = state.threadsWebViewUrl ?: state.urlText,
+                scanned = ScannedVideo(
+                    title = pageTitle?.takeIf { t -> t.isNotBlank() } ?: "Video Threads",
+                    uploader = ThreadsDirect.extractUsername(
+                        state.threadsWebViewUrl ?: state.urlText,
+                    ),
+                    durationSeconds = null,
+                    thumbnailUrl = null,
+                    webpageUrl = state.threadsWebViewUrl,
+                    options = listOf(option),
+                    previewVideo = PreviewMedia(
+                        url = directUrl,
+                        headers = mapOf("Referer" to referer),
+                        mimeType = "video/mp4",
+                    ),
+                    viaFallback = true,
+                ),
+                selectedSpec = Downloader.DIRECT_SPEC,
+            )
+        }
+    }
+
+    /** WebView bắt được link video Threads: dựng kết quả quét rồi tải luôn, khỏi bấm thêm. */
+    fun onThreadsVideoFoundAndDownload(
+        context: Context,
+        directUrl: String,
+        pageTitle: String?,
+    ) {
+        onThreadsVideoFound(directUrl, pageTitle)
         startDownload(context)
     }
 }

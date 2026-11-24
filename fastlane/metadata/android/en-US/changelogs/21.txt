@@ -1,0 +1,1 @@
+Fixed Threads links: yt-dlp does not support Threads, so the app now opens the post in the in-app browser and captures the direct video link, like it already does for Douyin.

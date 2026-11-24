@@ -1,0 +1,1 @@
+Sửa lỗi quét link Threads: yt-dlp không hỗ trợ Threads nên app mở trang bài trong trình duyệt và bắt link video trực tiếp, như cách đã làm với Douyin.

@@ -218,6 +218,18 @@ fun VdmApp(viewModel: MainViewModel) {
             )
             return@MaterialTheme
         }
+        val threadsUrl = uiState.threadsWebViewUrl
+        if (threadsUrl != null) {
+            ThreadsWebViewScreen(
+                pageUrl = threadsUrl,
+                onVideoFound = viewModel::onThreadsVideoFound,
+                onAutoDownload = { url, title ->
+                    viewModel.onThreadsVideoFoundAndDownload(context, url, title)
+                },
+                onClose = viewModel::closeThreadsWebView,
+            )
+            return@MaterialTheme
+        }
         if (uiState.showBrowser) {
             BrowserScreen(
                 onMediaFound = { url, title, pageUrl, fileName ->
