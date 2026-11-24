@@ -1,0 +1,1 @@
+Download history now shows the original download link for each entry: tap the link to copy it, tap the download button to download from that link again.

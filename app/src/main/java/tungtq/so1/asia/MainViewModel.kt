@@ -377,6 +377,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(showDownloadedFiles = false) }
     }
 
+    /** Tải lại từ 1 mục lịch sử: đóng màn file, đưa link vào ô dán rồi quét lại. */
+    fun redownloadFromHistory(url: String) {
+        closeDownloadedFiles()
+        setUrl(url)
+        scan()
+    }
+
     /**
      * Thử mở thư mục Download/VDM trong trình quản lý file của máy.
      * Trả về false nếu máy không có app nào nhận mở thư mục kiểu này.

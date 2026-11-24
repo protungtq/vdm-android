@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.InsertDriveFile
@@ -53,7 +54,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
@@ -75,6 +78,7 @@ import tungtq.so1.asia.dl.HistoryEntry
 @Composable
 fun DownloadedFilesScreen(viewModel: MainViewModel, onClose: () -> Unit) {
     val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
     var files by remember { mutableStateOf(listOf<File>()) }
     var history by remember { mutableStateOf(listOf<HistoryEntry>()) }
     var refreshKey by remember { mutableIntStateOf(0) }
@@ -335,6 +339,22 @@ fun DownloadedFilesScreen(viewModel: MainViewModel, onClose: () -> Unit) {
                                             formatFileDate(entry.downloadedAt),
                                         style = MaterialTheme.typography.bodySmall,
                                     )
+                                    // Link tải gốc: bấm vào để sao chép link.
+                                    Text(
+                                        entry.url,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.clickable {
+                                            clipboardManager.setText(AnnotatedString(entry.url))
+                                            Toast.makeText(
+                                                context,
+                                                "Đã sao chép link.",
+                                                Toast.LENGTH_SHORT,
+                                            ).show()
+                                        },
+                                    )
                                     if (!exists) {
                                         Text(
                                             "File đã không còn trên máy.",
@@ -342,6 +362,11 @@ fun DownloadedFilesScreen(viewModel: MainViewModel, onClose: () -> Unit) {
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         )
                                     }
+                                }
+                                IconButton(onClick = {
+                                    viewModel.redownloadFromHistory(entry.url)
+                                }) {
+                                    Icon(Icons.Default.Download, contentDescription = "Tải lại từ link này")
                                 }
                                 IconButton(onClick = {
                                     DownloadHistory.remove(entry)
