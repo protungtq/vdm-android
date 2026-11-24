@@ -1,0 +1,1 @@
+Added Facebook to Cookie & login: age-restricted Facebook videos could not be downloaded because the app had no way to capture Facebook cookies; sign in to Facebook in the app, then scan the link again.

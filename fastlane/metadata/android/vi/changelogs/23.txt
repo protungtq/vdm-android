@@ -1,0 +1,1 @@
+Thêm Facebook vào mục Cookie & đăng nhập: video Facebook giới hạn độ tuổi trước đây không tải được vì app không có chỗ lấy cookie Facebook; giờ đăng nhập Facebook trong app rồi quét lại link là tải được.

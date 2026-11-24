@@ -15,6 +15,13 @@ enum class CookiePlatform(
     /** Ghi chú riêng hiển thị trong WebView. */
     val hint: String,
 ) {
+    FACEBOOK(
+        label = "Facebook",
+        startUrl = "https://www.facebook.com/",
+        cookieUrls = listOf("https://www.facebook.com/"),
+        cookieDomain = ".facebook.com",
+        hint = "Đăng nhập tài khoản Facebook trong trang này, đợi đăng nhập xong rồi bấm Lưu cookie. Cần cho video giới hạn độ tuổi hoặc chỉ xem được khi đăng nhập.",
+    ),
     DOUYIN(
         label = "Douyin",
         startUrl = "https://www.douyin.com/",
